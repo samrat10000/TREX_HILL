@@ -1,0 +1,3 @@
+{ "name": "hill-kit-tests", "private": true,
+  "scripts": { "kit": "node kit-smoke.test.js", "app": "node app-headless.test.js" },
+  "dependencies": { "three": "0.147.0", "jsdom": "24.1.3" } }
