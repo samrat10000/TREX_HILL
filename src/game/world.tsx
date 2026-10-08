@@ -1,198 +1,70 @@
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect,useRef } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { BIOMES } from './presets';
-import { useGameStore } from '../state';
 import { KIT } from '../kit/core';
-import { RigidBody, CuboidCollider } from '@react-three/rapier';
-
-const clamp = THREE.MathUtils.clamp;
-const smooth = (a: number, b: number, x: number) => THREE.MathUtils.smoothstep(x, a, b);
-const hash = (x: number, z: number) => { const v = Math.sin(x * 127.1 + z * 311.7) * 43758.5453; return v - Math.floor(v); };
-export function terrainHeight(x: number, z: number) {
-  const d = Math.hypot(x, z), flat = smooth(9, 22, d);
-  const n1 = hash(Math.floor(x * .055), Math.floor(z * .055)) - .5;
-  const n2 = hash(Math.floor(x * .16 + 21), Math.floor(z * .16)) - .5;
-  let h = n1 * 10 * smooth(24, 96, d) + n2 * 2.2 * flat;
-  const ring = Math.abs(d - 34); h = THREE.MathUtils.lerp(h, h * .58, 1 - smooth(1.4, 4.4, ring));
-  h -= 6 * (1 - smooth(0, 21, Math.hypot(x + 40, z - 34)));
-  return h;
+import { bakeVehicle,bakeProp,batchSprites } from '../kit/bake';
+import { disposeObject,updateObject,useKitObject } from '../kit/lifecycle';
+import { QUALITY,useGameStore } from '../state';
+import { BIOMES } from './presets';
+import { grassMaterial,waterMaterial } from './materials';
+import { CHUNK_SIZE,chunkPlan } from './chunks';
+import { POIS,GATES,REGIONS,CHALLENGES,regionAt,regionBlend,regionRequirement } from './worldData';
+import { hash,LAKE,WATER_Y,WORLD_SIZE,chunkPlacements,roadFactor,terrainHeight } from './terrain';
+export { terrainHeight } from './terrain';
+const palette=Object.fromEntries(Object.entries(BIOMES).map(([id,b])=>[id,{ground:new THREE.Color(b.ground),dirt:new THREE.Color(b.dirt),base:new THREE.Color(b.grass[0]),tip:new THREE.Color(b.grass[1])}]));
+const seasonBiome=(season:string)=>({summer:'meadow',autumn:'autumn',highland:'highland',winter:'alpine'} as Record<string,string>)[season];
+function colorsAt(x:number,z:number,season:string){const blend=regionBlend(x,z),fixed=seasonBiome(season),a=palette[fixed??blend.a.biome],b=palette[fixed??blend.b.biome];return{a,b,w:fixed?0:blend.weight};}
+function makeScatter(p:ReturnType<typeof chunkPlacements>[number],override:string){const region=regionAt(p.x,p.z),season=override!=='regional'?override:region.id==='pass'?'winter':region.id==='ember'?'autumn':'summer';if(p.kind==='rock')return KIT.rock({kind:region.id==='canyon'&&p.seed%7===0?'mesa':'boulder',snow:region.id==='pass',seed:p.seed});if(p.kind==='bush')return KIT.bush({tone:region.id==='pass'?'snow':region.id==='canyon'?'desert':region.id==='ember'?'autumn':'sage',seed:p.seed});return region.id==='canyon'?KIT.cactus({seed:p.seed}):region.id==='coast'?KIT.palm({seed:p.seed}):region.id==='ember'||region.id==='meadow'&&p.seed%3===0?KIT.broadleaf({kind:p.seed%2?'aspen':'maple',season:region.id==='meadow'?'autumn':season,seed:p.seed}):KIT.pine({season,seed:p.seed});}
+function makePoi(p:typeof POIS[number]){const root=new THREE.Group();const place=(o:THREE.Object3D,dx=0,dz=0,dy=0)=>{bakeProp(o);o.userData.syncSprites=batchSprites(o);o.position.set(p.x+dx,terrainHeight(p.x+dx,p.z+dz)+dy,p.z+dz);root.add(o);for(const a of o.userData.world??[])root.add(a);return o};
+ if(p.kind==='camp'){place(KIT.firepit(),-2,3);place(KIT.tent({color:0xe0743a}),-6,-3);place(KIT.chair(),2,-1);place(KIT.lantern(),-2,-3);place(KIT.fairyLights(),-3,-6);place(KIT.props({kind:'table'}),4,-4);const caravan=place(KIT.caravan({paint:'cream'}),9,6);caravan.userData.parkedCaravan=true;}
+ else if(p.kind==='outpost'){const workshop=place(KIT.outpost());root.userData.workshopCanopy=workshop.userData.workshopCanopy;}else if(p.kind==='tower')place(KIT.tower());else if(p.kind==='lighthouse')place(KIT.lighthouse());else if(p.kind==='aframe')place(KIT.aframe());else if(p.kind==='logcabin')place(KIT.logCabin());else if(p.kind==='waterfall')place(KIT.waterfall());
+ else if(p.kind==='ferry'){const pier=place(KIT.pier());pier.position.y=WATER_Y-.4;const ferry=place(KIT.ferry(),-10,6);ferry.position.y=WATER_Y-.5;}
+ else if(p.kind==='bridge'){const b=place(KIT.bridge(),0,0,-3);b.rotation.y=0;}
+ else if(p.kind==='vehicle'&&p.vehicle&&p.vehicle in KIT.VEH){const rig=bakeVehicle(KIT.vehicle(p.vehicle!,{wear:.9,lights:'off'}));place(rig.root);rig.setSpots(false);root.userData.rig=rig;for(const a of rig.world)root.add(a);}
+ else if(p.kind==='photo'){const b=place(KIT.props({kind:'sign'}));b.scale.setScalar(.55);}
+ root.userData.poi=p;return root;
 }
-
-function makeTerrain() {
-  const size = 260, seg = 190, g = new THREE.PlaneGeometry(size, size, seg, seg); g.rotateX(-Math.PI / 2);
-  const pos = g.attributes.position, colors = new Float32Array(pos.count * 3);
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), z = pos.getZ(i), y = terrainHeight(x, z);
-    pos.setY(i, y);
-    const road = 1 - smooth(1.5, 3.1, Math.abs(Math.hypot(x, z) - 34));
-    const shade=(.88+hash(Math.round(x*.7),Math.round(z*.7))*.16)*(1-road*.1);
-    colors.set([shade,shade,shade], i * 3);
-  }
-  g.setAttribute('color', new THREE.BufferAttribute(colors, 3)); g.computeVertexNormals();
-  return g;
+function scatterGeometry(p:ReturnType<typeof chunkPlacements>[number],season:string,cache:Map<string,THREE.BufferGeometry>){
+ const key=`${regionAt(p.x,p.z).id}|${p.kind}|${season}|${Math.abs(p.seed)%4}`;let source=cache.get(key);
+ if(!source){const object=makeScatter({...p,seed:Math.abs(p.seed)%4+41},season),parts:THREE.BufferGeometry[]=[];object.updateMatrixWorld(true);object.traverse((child:any)=>{if(!child.isMesh||child.material.transparent)return;const g=child.geometry.index?child.geometry.toNonIndexed():child.geometry.clone();g.applyMatrix4(child.matrixWorld);for(const a of Object.keys(g.attributes))if(!['position','normal','color'].includes(a))g.deleteAttribute(a);const color=g.getAttribute('color'),rgb=new Float32Array(g.getAttribute('position').count*3),tint=child.material.color;for(let i=0;i<rgb.length/3;i++){rgb[i*3]=tint.r*(color?.getX(i)??1);rgb[i*3+1]=tint.g*(color?.getY(i)??1);rgb[i*3+2]=tint.b*(color?.getZ(i)??1);}g.setAttribute('color',new THREE.BufferAttribute(rgb,3));parts.push(g);});disposeObject(object);source=mergeGeometries(parts)!;parts.forEach(g=>g.dispose());cache.set(key,source);}
+ const g=source.clone(),matrix=new THREE.Matrix4().compose(new THREE.Vector3(p.x,p.y-.03,p.z),new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),p.yaw),new THREE.Vector3(p.scale,p.scale,p.scale));g.applyMatrix4(matrix);return g;
 }
-
-function buildScatter(biome:keyof typeof BIOMES){
-  const entries:THREE.Group[]=[];
-  const forest=biome==='desert'?['cactus','palm','snag']:biome==='coast'?['palm','pine','oak']:biome==='autumn'?['aspen','maple','pine']:biome==='alpine'?['pine','pine','pine']:['pine','aspen','oak'];
-  const count=biome==='desert'?25:biome==='alpine'?36:48;
-  for(let i=0;i<count;i++){
-    const a=hash(i,4)*Math.PI*2,r=15+hash(i,9)*105,x=Math.cos(a)*r,z=Math.sin(a)*r;
-    if(Math.abs(Math.hypot(x,z)-34)<6||terrainHeight(x,z)<-1)continue;
-    const type=forest[i%forest.length],season=biome==='autumn'?'autumn':biome==='alpine'?'winter':'summer';
-    const o=type==='pine'?KIT.pine({season,seed:i+11}):['aspen','maple','oak'].includes(type)?KIT.broadleaf({kind:type,season,seed:i+11}):type==='cactus'?KIT.cactus({seed:i+11}):type==='palm'?KIT.palm({seed:i+11}):KIT.snag({seed:i+11});
-    o.position.set(x,terrainHeight(x,z),z);o.rotation.y=hash(i,12)*Math.PI*2;o.scale.setScalar(.75+hash(i,17)*.65);entries.push(o);
-  }
-  for(let i=0;i<20;i++){
-    const a=hash(i,34)*Math.PI*2,r=14+hash(i,54)*88,x=Math.cos(a)*r,z=Math.sin(a)*r;
-    if(Math.abs(Math.hypot(x,z)-34)<5||terrainHeight(x,z)<-1)continue;
-    const o=KIT.rock({kind:biome==='desert'?'mesa':biome==='alpine'?'boulder':'cluster',snow:biome==='alpine',seed:i+500});
-    o.position.set(x,terrainHeight(x,z),z);o.rotation.y=hash(i,34)*6;o.scale.setScalar(.45+hash(i,18)*1.2);entries.push(o);
-  }
-  const buckets=new Map<string,{material:THREE.Material;geometries:THREE.BufferGeometry[]}>();
-  for(const o of entries){o.updateMatrixWorld(true);o.traverse((child:any)=>{
-    if(!child.isMesh||child.material.transparent||child.material.map)return;
-    let g=child.geometry.clone();g.applyMatrix4(child.matrixWorld);if(g.index)g=g.toNonIndexed();
-    for(const key of Object.keys(g.attributes))if(!['position','normal','color'].includes(key))g.deleteAttribute(key);
-    if(!g.attributes.normal)g.computeVertexNormals();const attrs=Object.keys(g.attributes).sort().join(','),key=child.material.uuid+'|'+attrs;
-    if(!buckets.has(key))buckets.set(key,{material:child.material,geometries:[]});buckets.get(key)!.geometries.push(g);
-  });o.traverse((child:any)=>child.geometry?.dispose());}
-  const root=new THREE.Group();root.name=`${biome} scatter`;
-  for(const {material,geometries} of buckets.values()){
-    const merged=mergeGeometries(geometries,false);geometries.forEach(g=>g.dispose());if(!merged)continue;
-    const mesh=new THREE.Mesh(merged,material);mesh.castShadow=true;mesh.receiveShadow=true;root.add(mesh);
-  }
-  return root;
+/** Copy in bounded pieces so merging a forest cannot monopolise one game frame. */
+function* combineScatter(parts:THREE.BufferGeometry[]){const count=parts.reduce((n,g)=>n+g.attributes.position.count,0),g=new THREE.BufferGeometry();let offset=0;
+ for(const name of ['position','normal','color']){const data=new Float32Array(count*3);offset=0;for(const part of parts){const source=part.attributes[name].array;for(let from=0;from<source.length;from+=3000){data.set(source.subarray(from,from+3000),offset+from);yield;}offset+=source.length;}g.setAttribute(name,new THREE.BufferAttribute(data,3));}
+ g.computeBoundingSphere();return g;
 }
+function* buildChunk(key:string,near:boolean,season:string,material:THREE.Material,cache:Map<string,THREE.BufferGeometry>){const [tx,tz]=key.split(',').map(Number),root=new THREE.Group(),n=near?64:16,count=(n+1)**2,positions=new Float32Array(count*3),colors=new Float32Array(count*3),indices:number[]=[],color=new THREE.Color(),bins=new Map<string,{material:THREE.Material;gs:THREE.BufferGeometry[]}>();let complete=false;root.userData.key=key;root.userData.near=near;try {
+ for(let row=0;row<=n;row++){for(let col=0;col<=n;col++){const i=row*(n+1)+col,x=-1024+tx*128+col/n*128,z=-1024+tz*128+row/n*128,y=terrainHeight(x,z),p=colorsAt(x,z,season);positions.set([x,y,z],i*3);color.copy(p.a.ground).lerp(p.b.ground,p.w).multiplyScalar(.94+KIT.noise3(x*.15,0,z*.15)*.12);color.lerp(new THREE.Color().copy(p.a.dirt).lerp(p.b.dirt,p.w),roadFactor(x,z)*.9);if(y<WATER_Y+1)color.lerp(new THREE.Color(0xdcc48e),Math.max(0,1-(y-WATER_Y)));colors.set([color.r,color.g,color.b],i*3);if(row<n&&col<n){const a=i,b=i+1,c=i+n+1,d=i+n+2;indices.push(a,c,b,b,c,d)}}yield;}
+ const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));geometry.setAttribute('color',new THREE.BufferAttribute(colors,3));geometry.setIndex(indices);geometry.computeVertexNormals();geometry.computeBoundingSphere();const terrain=new THREE.Mesh(geometry,material);terrain.receiveShadow=true;root.add(terrain);yield;
+ const placements=chunkPlacements(tx,tz);root.userData.obstacles=placements.filter(p=>p.kind!=='bush');
+ for(const p of placements){const g=scatterGeometry(p,season,cache);if(!bins.has('scatter'))bins.set('scatter',{material,gs:[]});bins.get('scatter')!.gs.push(g);yield;}
+ for(const bin of bins.values()){const g=yield* combineScatter(bin.gs);bin.gs.forEach(g=>g.dispose());bin.gs=[];const mesh=new THREE.Mesh(g,bin.material);mesh.castShadow=near;mesh.receiveShadow=true;root.add(mesh);yield;}
 
-function Scatter({ biome, objectRef }: { biome: keyof typeof BIOMES; objectRef:any }) {
-  const objects=useMemo(()=>buildScatter(biome),[biome]);
-  return <primitive object={objects} ref={objectRef} />;
+ for(const p of POIS.filter(p=>Math.floor((p.x+1024)/128)===tx&&Math.floor((p.z+1024)/128)===tz)){root.add(makePoi(p));yield;}
+ for(const gate of GATES.filter(p=>Math.floor((p.x+1024)/128)===tx&&Math.floor((p.z+1024)/128)===tz)){const o=bakeProp(KIT.rangerGate());o.userData.syncSprites=batchSprites(o);o.position.set(gate.x,terrainHeight(gate.x,gate.z),gate.z);o.rotation.y=gate.yaw;o.userData.gate=gate;root.add(o);yield;}
+ for(const trail of CHALLENGES){for(const[which,at]of [['start',trail.start],['end',trail.end]] as const)if(Math.floor((at.x+1024)/128)===tx&&Math.floor((at.z+1024)/128)===tz){const flag=KIT.beacon();flag.position.set(at.x,terrainHeight(at.x,at.z),at.z);flag.scale.setScalar(.7);flag.userData.trail={...trail,which};root.add(flag);for(const a of flag.userData.world??[])root.add(a);yield;}}
+ const r=REGIONS[hash(tx,tz)*6|0],wx=tx===8&&tz===7?15:-1024+tx*128+74,wz=tx===8&&tz===7?-12:-1024+tz*128+92;if(terrainHeight(wx,wz)>WATER_Y&&regionAt(wx,wz).id!=='canyon'){const deer=bakeProp(KIT.deer());deer.position.set(wx,terrainHeight(wx,wz),wz);deer.userData.species='deer';root.add(deer);const owl=bakeProp(KIT.owl());owl.position.set(wx+3,terrainHeight(wx+3,wz)+1.6,wz);owl.userData.species='owl';root.add(owl)}
+ if(regionAt(wx,wz).id==='coast'){const gulls=KIT.flock({n:4});gulls.position.set(wx,terrainHeight(wx,wz)+3,wz);gulls.userData.species='gull';root.add(gulls);}root.userData.material=material;complete=true;return root;
+ }finally{if(!complete){disposeObject(root);for(const bin of bins.values())bin.gs.forEach(g=>g.dispose());}}
 }
-
-function CampScene({objectRef}:{objectRef:any}){
-  const camp=useMemo(()=>{
-    const root=new THREE.Group(), add=(id:string,opts:any,x:number,z:number,yaw=0)=>{
-      const entry=KIT.ENTRIES.find((e:any)=>e.id===id) as any;
-      const object=entry.vehicle?KIT.vehicle(id,opts).root:entry.build(opts);
-      object.position.set(x,terrainHeight(x,z)-.04,z);object.rotation.y=yaw;root.add(object);
-    };
-    add('firepit',{seed:38},-5,-6);add('tent',{color:0xe0743a},-9,-7,.4);add('lantern',{},-3,-8);add('fairy',{seed:11},-6,-9);add('aframe',{},8,-11,-.25);
-    add('lighthouse',{},-64,34,.2);add('beacon',{},9,-18);
-    add('outpost',{},-16,10,.3);
-    const ferry=KIT.ferry({seed:2});ferry.position.set(-40,-1.9,34);root.add(ferry);
-    const pier=KIT.pier({});pier.position.set(-31,-2.1,29);pier.rotation.y=-.5;root.add(pier);
-    return root;
-  },[]);
-  return <primitive object={camp} ref={objectRef} />;
+function Grass({params}:{params:React.MutableRefObject<any>}){const settings=useGameStore(s=>s.settings),count=QUALITY[settings.quality].grass,mesh=useRef<THREE.InstancedMesh>(null),geo=useKitObject(()=>KIT.bladeGeo(),String(count),g=>g.dispose()),mat=useKitObject(grassMaterial,'grass-material',m=>m.dispose()),center=useRef(''),jobs=useRef<Generator[]>([]),tileKeys=useRef<string[]>([]),cursor=useRef(0);
+ useEffect(()=>{tileKeys.current=[];center.current='';jobs.current=[];if(geo){geo.setAttribute('aTip',new THREE.InstancedBufferAttribute(new Float32Array(count*3),3));geo.setAttribute('aSnow',new THREE.InstancedBufferAttribute(new Float32Array(count),1));}if(mesh.current){mesh.current.instanceMatrix.array.fill(0);mesh.current.instanceMatrix.needsUpdate=true;}},[geo,count,settings.season]);
+ function* fillTile(tx:number,tz:number,slot:number){if(!mesh.current||!geo?.attributes.aTip||!geo.attributes.aSnow)return;const target=mesh.current;const tile=`${tx},${tz}`,per=Math.floor(count/81),matrix=new THREE.Matrix4(),base=new THREE.Color(),tip=new THREE.Color();for(let i=0;i<per;i++){if(tileKeys.current[slot]!==tile||mesh.current!==target)return;const index=slot*per+i;let seed=0,x=0,z=0,y=0,on=false;for(let attempt=0;attempt<4;attempt++){seed=tx*719+tz*1327+i*31+attempt*1993;x=tx*18+hash(seed,19)*18;z=tz*18+hash(seed,37)*18;y=terrainHeight(x,z);on=roadFactor(x,z)<.35&&y>WATER_Y+.2&&Math.abs(x)<1000&&Math.abs(z)<1000&&!POIS.some(p=>['camp','outpost'].includes(p.kind)&&Math.hypot(x-p.x,z-p.z)<6.5)&&!(regionAt(x,z).id==='canyon'&&hash(seed,43)<.75);if(on)break;}const r=regionAt(x,z),p=colorsAt(x,z,settings.season);const scale=on?.85+hash(seed,5)*.55:0,h=on?(.5+hash(seed,33)*.9)/scale:0,a=hash(seed,96)*Math.PI*2,c=Math.cos(a)*scale,s=Math.sin(a)*scale;matrix.set(c,0,s,x,0,h*scale,0,y-.03,-s,0,c,z,0,0,0,1);mesh.current.setMatrixAt(index,matrix);base.copy(p.a.base).lerp(p.b.base,p.w).multiplyScalar(.88+hash(seed,21)*.25);tip.copy(p.a.tip).lerp(p.b.tip,p.w).multiplyScalar(.88+hash(seed,21)*.25);mesh.current.setColorAt(index,base);(geo.attributes.aTip as THREE.InstancedBufferAttribute).setXYZ(index,tip.r,tip.g,tip.b);(geo.attributes.aSnow as THREE.InstancedBufferAttribute).setX(index,r.id==='pass'?1:0);if(i%48===0)yield;}mesh.current.instanceMatrix.needsUpdate=true;if(mesh.current.instanceColor)mesh.current.instanceColor.needsUpdate=true;geo.attributes.aTip.needsUpdate=true;geo.attributes.aSnow.needsUpdate=true;}
+ params.current.updateGrass=(dt:number)=>{if(!mesh.current||!geo?.attributes.aTip||!geo.attributes.aSnow||mesh.current.instanceMatrix.count!==count||!mat){params.current.grassReady=false;return;}const m=params.current,p=m.preset,f=m.focus,u=mat.uniforms,cx=Math.floor(f.x/18),cz=Math.floor(f.z/18),key=`${cx},${cz}|${settings.season}`;if(center.current!==key){center.current=key;for(let dx=-4;dx<=4;dx++)for(let dz=-4;dz<=4;dz++){const tx=cx+dx,tz=cz+dz,slot=((tx%9+9)%9)*9+(tz%9+9)%9,tile=`${tx},${tz}`;if(tileKeys.current[slot]!==tile){tileKeys.current[slot]=tile;jobs.current.push(fillTile(tx,tz,slot));}}}const end=performance.now()+(useGameStore.getState().screen==='loading'?12:2);while(jobs.current.length&&performance.now()<end){if(jobs.current[0].next().done)jobs.current.shift();}u.uTime.value=m.time;u.uWind.value.set(1,p.wind,.4);u.uPush.value.set(f.x,f.z,1.4,0);const d=m.drive;for(let i=0;i<6;i++){const w=m.rig?.wheels[i];u.uWheels.value[i].set(w?d.x+w.x*Math.cos(d.yaw)+w.z*Math.sin(d.yaw):0,w?d.z-w.x*Math.sin(d.yaw)+w.z*Math.cos(d.yaw):0,w?1:0,0);}u.uHead.value.set(f.x,f.z,m.headlights??0,0);u.uForward.value.set(Math.cos(d.yaw),-Math.sin(d.yaw));u.uSun.value.copy(p.sun).multiplyScalar(.85*p.sunI);u.uAmb.value.copy(p.hemi).multiplyScalar(.75*p.hemiI).add(new THREE.Color().copy(p.ground).multiplyScalar(.15));u.uSnow.value=p.snow;u.uDensity.value=settings.grass;mesh.current.visible=settings.grass>0;mesh.current.count=Math.floor(count/81)*81;m.grassReady=jobs.current.length===0;m.grassDebug=import.meta.env.DEV?mesh.current:undefined;};
+ return geo&&mat?<instancedMesh key={count} ref={mesh} args={[geo,mat,count]} frustumCulled={false}/>:null;
 }
-
-function WorldColliders({biome}:{biome:keyof typeof BIOMES}){
-  const count=biome==='desert'?26:biome==='alpine'?34:46;
-  const positions=useMemo(()=>Array.from({length:count},(_,i)=>{
-    const a=hash(i,4)*Math.PI*2,r=16+hash(i,9)*103,x=Math.cos(a)*r,z=Math.sin(a)*r;
-    return {x,z,y:terrainHeight(x,z),s:.65+hash(i,17)*.7};
-  }).filter(p=>Math.abs(Math.hypot(p.x,p.z)-34)>6&&terrainHeight(p.x,p.z)>-1),[biome,count]);
-  return <>{positions.map((p,i)=><RigidBody key={i} type="fixed" colliders={false} position={[p.x,p.y+p.s*1.25,p.z]}><CuboidCollider args={[p.s*.34,p.s*1.2,p.s*.34]} /></RigidBody>)}</>;
-}
-
-export function World({ params }: { params: React.MutableRefObject<any> }) {
-  const settings = useGameStore();
-  const geometry = useMemo(() => makeTerrain(), []);
-  const groundMat = useRef<THREE.MeshStandardMaterial>(null);
-  const groundMesh = useRef<THREE.Mesh>(null);
-  const waterMat = useRef<THREE.MeshStandardMaterial>(null);
-  const skyMat = useRef<THREE.ShaderMaterial>(null);
-  const waterMesh=useRef<THREE.Mesh>(null),scatterMesh=useRef<THREE.Group>(null),campMesh=useRef<THREE.Group>(null),skirtMesh=useRef<THREE.Mesh>(null);
-  const grass = useRef<THREE.InstancedMesh>(null);
-  const grassMaterial = useRef<THREE.MeshStandardMaterial>(null);
-  const grassData = useMemo(()=>{
-    const geo=new THREE.PlaneGeometry(.14,.82,1,1);geo.translate(0,.41,0);
-    const positions:[number,number,number,number][]=[];
-    for(let i=0;i<14500;i++){
-      const a=hash(i,71)*Math.PI*2,r=Math.sqrt(hash(i,18))*88,x=Math.cos(a)*r,z=Math.sin(a)*r;
-      if(Math.abs(Math.hypot(x,z)-34)<4||Math.hypot(x+40,z-34)<19||terrainHeight(x,z)<-1)continue;
-      positions.push([x,terrainHeight(x,z),z,hash(i,96)*Math.PI*2]);
-    }
-    return {geo,positions};
-  },[]);
-  useLayoutEffect(()=>{
-    if(!grass.current)return;
-    const d=new THREE.Object3D();grassData.positions.forEach(([x,y,z,a],i)=>{d.position.set(x,y,z);d.rotation.set(0,a,0);const scale=.65+hash(i,5)*.8;d.scale.set(scale,scale,scale);d.updateMatrix();grass.current!.setMatrixAt(i,d.matrix)});
-    grass.current.count=grassData.positions.length;grass.current.instanceMatrix.needsUpdate=true;
-  },[grassData]);
-  useLayoutEffect(()=>{
-    const m=grassMaterial.current;if(!m)return;
-    m.onBeforeCompile=(shader)=>{
-      shader.uniforms.uHillTime={value:0};shader.uniforms.uHillCar={value:new THREE.Vector3(34,0,0)};shader.uniforms.uHillWind={value:new THREE.Vector2(1,.5)};
-      (m.userData as any).shader=shader;
-      shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nuniform float uHillTime;uniform vec3 uHillCar;uniform vec2 uHillWind;varying float vHillFade;');
-      shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
-        float bladeH=uv.y;float phase=instanceMatrix[3][0]*.32+instanceMatrix[3][2]*.21;
-        transformed.x+=sin(uHillTime*1.6+phase)*uHillWind.x*.16*bladeH*bladeH;
-        vec3 hillWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.)).xyz;vHillFade=1.-smoothstep(50.,104.,distance(hillWorld,cameraPosition));vec2 hillDelta=hillWorld.xz-uHillCar.xz;float hillDist=length(hillDelta);
-        float hillPush=(1.-smoothstep(1.1,3.8,hillDist))*step(.01,3.8);transformed.x+=sign(hillDelta.x)*hillPush*.36*bladeH;transformed.z+=sign(hillDelta.y)*hillPush*.36*bladeH;`);
-      shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying float vHillFade;');
-      shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
-        float hillNoise=fract(sin(dot(floor(gl_FragCoord.xy),vec2(12.9898,78.233)))*43758.5453);if(hillNoise>vHillFade)discard;`);
-    };
-  },[]);
-  const groundTarget = useMemo(() => new THREE.Color(BIOMES[settings.biome as keyof typeof BIOMES].ground), [settings.biome]);
-  const waterTarget = useMemo(() => new THREE.Color(BIOMES[settings.biome as keyof typeof BIOMES].water[0]), [settings.biome]);
-  const grassTarget = useMemo(() => new THREE.Color(BIOMES[settings.biome as keyof typeof BIOMES].grass[0]), [settings.biome]);
-  useLayoutEffect(()=>{
-    const m=groundMat.current;if(!m)return;
-    m.onBeforeCompile=(shader)=>{
-      shader.uniforms.uHillSnow={value:0};shader.uniforms.uHillWet={value:0};(m.userData as any).shader=shader;
-      shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nuniform float uHillSnow;uniform float uHillWet;');
-      shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
-        diffuseColor.rgb*=1.-uHillWet*.24;diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.88,.91,.97),uHillSnow*.8);`);
-    };
-  },[]);
-  useLayoutEffect(()=>{
-    const m=waterMat.current;if(!m)return;
-    m.onBeforeCompile=(shader)=>{
-      shader.uniforms.uHillWaterTime={value:0};(m.userData as any).shader=shader;
-      shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nuniform float uHillWaterTime;varying vec3 vHillWater;');
-      shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
-        transformed.z+=sin(position.x*.34+uHillWaterTime*1.2)*.055+sin(position.y*.5+uHillWaterTime*.9)*.04;
-        vHillWater=(modelMatrix*vec4(transformed,1.)).xyz;`);
-      shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vHillWater;');
-      shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
-        float shore= 1.-smoothstep(29.,43.,length(vHillWater.xz-vec2(-40.,34.)));
-        float fres=pow(1.-max(dot(normalize(vHillWater-cameraPosition),vec3(0.,1.,0.)),0.),3.);
-        vec3 deep=vec3(.025,.20,.25),shallow=vec3(.16,.60,.58);diffuseColor.rgb=mix(deep,shallow,shore*.76);diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.72,.86,.83),fres*.36);`);
-    };
-  },[]);
-  useLayoutEffect(()=>{KIT.shared.grassMat=grassMaterial.current;KIT.shared.waterMat=waterMat.current;},[]);
-  params.current.updateWorld = (dt: number) => {
-    if (groundMat.current) groundMat.current.color.lerp(groundTarget, 1-Math.exp(-dt*2.2));
-    if (waterMat.current) waterMat.current.color.lerp(waterTarget, 1-Math.exp(-dt*2.2));
-    if (grassMaterial.current) grassMaterial.current.color.lerp(grassTarget,1-Math.exp(-dt*2.2));
-    if (waterMesh.current) waterMesh.current.position.y=-1.4 + Math.sin(performance.now()*.0008)*.035;
-    const groundShader=(groundMat.current?.userData as any)?.shader;
-    if(groundShader){groundShader.uniforms.uHillSnow.value=Math.max(params.current.preset?.snow||0,BIOMES[settings.biome as keyof typeof BIOMES].snow);groundShader.uniforms.uHillWet.value=params.current.preset?.wet||0}
-    const waterShader=(waterMat.current?.userData as any)?.shader;if(waterShader)waterShader.uniforms.uHillWaterTime.value=performance.now()*.001;
-    const under=!!params.current.cameraUnder,showWorld=!params.current.diorama;
-    if(groundMesh.current)groundMesh.current.visible=showWorld&&!under;if(grass.current)grass.current.visible=showWorld&&!under;
-    if(scatterMesh.current)scatterMesh.current.visible=showWorld;if(campMesh.current)campMesh.current.visible=showWorld;
-    if(waterMesh.current)waterMesh.current.visible=showWorld;if(skirtMesh.current)skirtMesh.current.visible=showWorld;
-    const shader=(grassMaterial.current?.userData as any)?.shader;
-    if(shader){shader.uniforms.uHillTime.value=performance.now()*.001;shader.uniforms.uHillWind.value.set(params.current.preset?.wind||.5,.35);shader.uniforms.uHillCar.value.copy(params.current.focus||new THREE.Vector3());}
-    if (skyMat.current) { const p=params.current.preset; skyMat.current.uniforms.top.value.copy(p.top); skyMat.current.uniforms.horizon.value.copy(p.horizon); }
-  };
-  const skyUniforms = useMemo(()=>({top:{value:new THREE.Color(0xf3b27a)},horizon:{value:new THREE.Color(0xffdcaa)} }),[]);
-  return <>
-    <mesh geometry={new THREE.SphereGeometry(500, 32, 18)} scale={[-1,1,1]} frustumCulled={false}>
-      <shaderMaterial ref={skyMat} uniforms={skyUniforms} side={THREE.BackSide} depthWrite={false} vertexShader="varying vec3 v; void main(){v=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}" fragmentShader="uniform vec3 top,horizon; varying vec3 v; void main(){float a=smoothstep(-.25,.45,v.y);gl_FragColor=vec4(mix(horizon,top,a),1.);}" />
-    </mesh>
-    <mesh ref={groundMesh} geometry={geometry} receiveShadow><meshStandardMaterial ref={groundMat} vertexColors roughness={1} /></mesh>
-    <instancedMesh ref={grass} args={[grassData.geo,undefined as any,grassData.positions.length]} frustumCulled={false}><meshStandardMaterial ref={grassMaterial} color={BIOMES[settings.biome as keyof typeof BIOMES].grass[0]} side={THREE.DoubleSide} roughness={1} /></instancedMesh>
-    <mesh ref={waterMesh} rotation-x={-Math.PI/2} position={[-40,-1.4,34]}><planeGeometry args={[74,74,72,72]} /><meshStandardMaterial ref={waterMat} color={0x1d6f86} roughness={.2} metalness={.08} transparent opacity={.94} /></mesh>
-    <Scatter biome={settings.biome as keyof typeof BIOMES} objectRef={scatterMesh} />
-    <WorldColliders biome={settings.biome as keyof typeof BIOMES} />
-    <CampScene objectRef={campMesh} />
-    <mesh ref={skirtMesh} rotation-x={-Math.PI/2} position-y={-3.8}><circleGeometry args={[450,48]} /><meshStandardMaterial color={BIOMES[settings.biome as keyof typeof BIOMES].ground} /></mesh>
-  </>;
+export function World({params}:{params:React.MutableRefObject<any>}){const templates=useKitObject(()=>new Map<string,THREE.BufferGeometry>(),'scatter-templates',cache=>{for(const g of cache.values())g.dispose()}),settings=useGameStore(s=>s.settings),container=useKitObject(()=>new THREE.Group(),'streamed-world',disposeObject),chunks=useRef(new Map<string,THREE.Group>()),job=useRef<{key:string;near:boolean;builder:Generator<void,THREE.Group>;partial?:THREE.Group}|null>(null),material=useKitObject(()=>{const m=new THREE.MeshStandardMaterial({vertexColors:true,flatShading:true,roughness:1});m.userData.kitShared=true;m.userData.env={snow:{value:0},wet:{value:0}};m.onBeforeCompile=shader=>{Object.assign(shader.uniforms,m.userData.env);shader.fragmentShader='uniform float snow,wet;\n'+shader.fragmentShader;shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\ndiffuseColor.rgb=mix(diffuseColor.rgb,vec3(.9,.93,.97),snow*.78);diffuseColor.rgb*=1.-wet*.14;');};return m},settings.season,m=>m.dispose()),sky=useRef<THREE.Mesh>(null),skyMaterial=useRef<THREE.ShaderMaterial>(null),water=useKitObject(waterMaterial,'world-water',m=>m.dispose()),waterGeometry=useKitObject(()=>{const g=new THREE.PlaneGeometry(WORLD_SIZE,WORLD_SIZE,128,128);g.rotateX(-Math.PI/2);const p=g.attributes.position,depth=new Float32Array(p.count);for(let i=0;i<p.count;i++)depth[i]=WATER_Y-terrainHeight(p.getX(i),p.getZ(i));g.setAttribute('aDepth',new THREE.BufferAttribute(depth,1));return g;},'water-geometry',g=>g.dispose());
+ const stars=useKitObject(()=>{const p=[];for(let i=0;i<1000;i++){const a=hash(i,91)*Math.PI*2,y=.05+hash(i,12)*.95,r=Math.sqrt(1-y*y);p.push(Math.cos(a)*r*1800,y*1800,Math.sin(a)*r*1800)}const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));return g},'stars',g=>g.dispose()),starMesh=useRef<THREE.Points>(null),starMat=useRef<THREE.PointsMaterial>(null);
+ const ridges=useKitObject(()=>Array.from({length:3},(_,ring)=>bakeProp(KIT.ridge({ring,radius:1250+ring*220,seed:31+ring}))),'distant-ridges',value=>value.forEach(disposeObject));
+ const mountainTint=useRef(new THREE.Color());const lightScratch=useRef(new THREE.Vector3());
+ const uniforms=useRef({top:{value:new THREE.Color()},horizon:{value:new THREE.Color()},sun:{value:new THREE.Color()},sunDir:{value:new THREE.Vector3()},flash:{value:0}}),lastCenter=useRef(''),queue=useRef<string[]>([]);
+ useEffect(()=>{job.current?.builder.return(null as any);for(const chunk of chunks.current.values()){container?.remove(chunk);disposeObject(chunk);params.current.removeChunkColliders?.(chunk.userData.key)}chunks.current.clear();job.current=null;queue.current=[];lastCenter.current='';params.current.worldReady=false;return()=>{job.current?.builder.return(null as any);job.current=null;};},[settings.quality,settings.season,container]);
+ params.current.updateWorld=(dt:number)=>{if(!container||!material||!templates)return;const m=params.current,f=m.focus,p=m.preset;material.userData.env.snow.value=settings.season==='winter'?1:p.snow;material.userData.env.wet.value=p.wet;const cx=Math.floor((f.x+1024)/128),cz=Math.floor((f.z+1024)/128),center=`${cx},${cz}`;
+ if(center!==lastCenter.current){if(job.current){const [jx,jz]=job.current.key.split(',').map(Number);if(Math.max(Math.abs(jx-cx),Math.abs(jz-cz))>4){job.current.builder.return(null as any);job.current=null;}}lastCenter.current=center;const plan=chunkPlan(f.x,f.z,chunks.current.keys());for(const key of plan.remove){const chunk=chunks.current.get(key)!;container.remove(chunk);disposeObject(chunk);chunks.current.delete(key);m.removeChunkColliders?.(key)}queue.current=plan.add;for(const key of plan.wanted){const chunk=chunks.current.get(key);if(chunk){const[x,z]=key.split(',').map(Number),near=Math.max(Math.abs(x-cx),Math.abs(z-cz))<=1;if(chunk.userData.near!==near)queue.current.push(key)}}}
+ const start=performance.now(),budget=useGameStore.getState().screen==='loading'?20:5;while(performance.now()-start<budget){if(!job.current){const key=queue.current.shift();if(!key)break;const[x,z]=key.split(',').map(Number),near=Math.max(Math.abs(x-cx),Math.abs(z-cz))<=1;job.current={key,near,builder:buildChunk(key,near,settings.season,material,templates)};}const result=job.current.builder.next();if(result.done){const old=chunks.current.get(job.current.key);if(old){container.remove(old);disposeObject(old)}const chunk=result.value;chunk.userData.lights=[];chunk.userData.caravans=[];chunk.userData.spriteSync=[];chunk.traverse((o:any)=>{if(o.isMesh&&settings.quality!=='high'&&settings.quality!=='ultra')o.castShadow=false;if(o.isPointLight){o.visible=false;chunk.userData.lights.push(o)}if(o.userData.parkedCaravan)chunk.userData.caravans.push(o);if(o.userData.syncSprites)chunk.userData.spriteSync.push(o.userData.syncSprites)});container.add(chunk);chunks.current.set(job.current.key,chunk);m.addChunkColliders?.(job.current.key,chunk.userData.obstacles,chunk.children.filter(c=>c.userData.poi||c.userData.gate));job.current=null;}}
+ m.chunkBuildMs=performance.now()-start;m.maxChunkBuildMs=Math.max(m.maxChunkBuildMs??0,m.chunkBuildMs);m.worldReady=chunks.current.has(center)&&[[1,0],[-1,0],[0,1],[0,-1]].every(([dx,dz])=>cx+dx<0||cx+dx>15||cz+dz<0||cz+dz>15||chunks.current.has(`${cx+dx},${cz+dz}`));m.chunkCount=chunks.current.size;m.terrainDebug=import.meta.env.DEV?container:undefined;
+ for(const chunk of chunks.current.values()){if(chunk.userData.shadowQuality!==settings.quality){chunk.traverse((o:any)=>{if(o.isMesh){o.userData.originalCastShadow??=o.castShadow;o.castShadow=(settings.quality==='high'||settings.quality==='ultra')&&o.userData.originalCastShadow;}});chunk.userData.shadowQuality=settings.quality;}const[x,z]=chunk.userData.key.split(',').map(Number),distance=Math.hypot(x*128-960-f.x,z*128-960-f.z);chunk.visible=distance<p.fogFar*1.2+91;if(chunk.visible){for(const caravan of chunk.userData.caravans)caravan.visible=!useGameStore.getState().garage.trailer;for(const child of chunk.children){if(child.userData.gate){child.userData.setOpen(!regionRequirement(child.userData.gate.region,useGameStore.getState().found,useGameStore.getState().garage));}const poi=child.userData.poi;if(child.userData.workshopCanopy)child.userData.workshopCanopy.visible=!(useGameStore.getState().screen==='garage'&&poi?.id==='garage');if(poi)child.visible=Math.hypot(poi.x-f.x,poi.z-f.z)<p.fogFar*1.2+20;if(child.userData.trail)child.visible=child.position.distanceTo(f)<p.fogFar*1.2+8;if(child.userData.poi?.kind==='vehicle')child.visible=child.visible&&!useGameStore.getState().garage.owned.includes(child.userData.poi.vehicle)&&useGameStore.getState().towVehicle!==child.userData.poi.vehicle;if(child.userData.species)child.visible=child.position.distanceTo(f)<p.fogFar*1.2+8&&(child.userData.species==='owl'?p.night>=.5:p.night<.5);updateObject(child,dt,m.time,p);}for(const sync of chunk.userData.spriteSync)sync();}}
+ const lightPosition=lightScratch.current;let nearest=1600,next=1600;const local=m.localLights??(m.localLights=[]);local.length=0;for(const chunk of chunks.current.values())for(const light of chunk.userData.lights){const distance=light.getWorldPosition(lightPosition).distanceToSquared(f);if(distance<nearest){local[1]=local[0];local[0]=light;next=nearest;nearest=distance;}else if(distance<next){local[1]=light;next=distance;}}if(ridges)for(let i=0;i<ridges.length;i++)ridges[i].userData.tint.color.copy(p.fog).lerp(mountainTint.current.copy(p.top).lerp(p.hemi,.4).multiplyScalar(.55),.3-i*.09);m.objects=container;m.updateGrass?.(dt);if(sky.current)sky.current.position.copy(m.camera?.position??f);if(starMesh.current)starMesh.current.position.copy(m.camera?.position??f);if(starMat.current)starMat.current.opacity=p.night*(1-p.rain);const u=uniforms.current;u.top.value.copy(p.top);u.horizon.value.copy(p.horizon);u.sun.value.copy(p.sun).multiplyScalar(p.sunI*.5);u.sunDir.value.set(Math.cos(p.el*Math.PI/180),Math.sin(p.el*Math.PI/180),.4).normalize();u.flash.value=m.lightningFlash??0;if(water){const u=water.uniforms;u.uTime.value=m.time;u.uSky.value.copy(p.horizon);u.uSunCol.value.copy(p.sun).multiplyScalar(p.sunI);u.uSunDir.value.copy(uniforms.current.sunDir.value);KIT.shared.waterMat=water;}}
+ return <>{ridges?.map((ridge,i)=><primitive object={ridge} key={i}/>)}{container&&<primitive object={container}/>}<Grass params={params}/><mesh ref={sky} frustumCulled={false}><sphereGeometry args={[2000,32,18]}/><shaderMaterial ref={skyMaterial} uniforms={uniforms.current} side={THREE.BackSide} depthWrite={false} fog={false} vertexShader="varying vec3 v;void main(){v=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}" fragmentShader="uniform vec3 top,horizon,sun,sunDir;uniform float flash;varying vec3 v;void main(){vec3 d=normalize(v);vec3 c=mix(horizon,top,pow(clamp(d.y,0.,1.),.5));float s=max(dot(d,normalize(sunDir)),0.);c+=sun*(pow(s,6.)*.15+pow(s,48.)*.25);c=mix(c,sun*1.4+.2,smoothstep(.9993,.9996,s));gl_FragColor=vec4(c+vec3(.75,.85,1.)*flash,1.);}"/></mesh>{stars&&<points ref={starMesh} geometry={stars}><pointsMaterial ref={starMat} size={1.5} sizeAttenuation={false} fog={false} transparent opacity={0} depthWrite={false}/></points>}{water&&waterGeometry&&<mesh material={water} geometry={waterGeometry} position-y={WATER_Y}/>}</>;
 }

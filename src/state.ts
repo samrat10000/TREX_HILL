@@ -1,15 +1,54 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-
-export type GameSettings = { time: string; weather: string; biome: string; vehicle: string; loadout: Record<string, any>; trailer: boolean; ui: 'drive' | 'garage' | 'viewer' };
-type GameActions = GameSettings & {
-  set: (patch: Partial<GameSettings>) => void;
-  setOption: (key: string, value: any) => void;
+import { persist,createJSONStorage } from 'zustand/middleware';
+import { KIT } from './kit/core';
+import { partRequirement } from './game/progression';
+import { TIMES, WEATHER } from './game/presets';
+export const QUALITY={low:{grass:24000,pixelRatio:1,shadows:0,bloom:false,terrainSegments:32},medium:{grass:36000,pixelRatio:1.25,shadows:1024,bloom:false,terrainSegments:48},high:{grass:96000,pixelRatio:1.5,shadows:2048,bloom:true,terrainSegments:64},ultra:{grass:128000,pixelRatio:2,shadows:2048,bloom:true,terrainSegments:64}} as const;
+export type Quality=keyof typeof QUALITY;
+export const DEFAULT_KEYS={up:'KeyW',down:'KeyS',left:'KeyA',right:'KeyD',brake:'Space',lights:'KeyH',range:'KeyL',camera:'KeyC',map:'KeyM',photo:'KeyP',journal:'KeyJ',camp:'KeyE',recover:'KeyR',horn:'KeyB'};
+export type Action=keyof typeof DEFAULT_KEYS;
+export type Screen='loading'|'title'|'play'|'freeroam'|'garage'|'settings'|'drive'|'pause'|'map'|'journal'|'photo';
+export const DEFAULT_SETTINGS={time:'golden',weather:'clear',season:'regional',cycle:24,quality:(typeof matchMedia!=='undefined'&&matchMedia('(pointer:coarse)').matches?'medium':'high') as Quality,scale:1,grass:1,shadows:true,bloom:true,fov:50,master:.8,engine:.55,tyres:.4,birds:.4,worldv:.5,music:.3,uiv:.6,showSpeed:false,showMini:false,compass:true,prompts:true,units:'kmh',cozy:true,autoLights:true,camShake:.4,textScale:1,reduce:false,contrast:false,subtitles:true,hold:false,timedTrails:false,keys:{...DEFAULT_KEYS}};
+export type Settings=typeof DEFAULT_SETTINGS;
+export type GarageData={vehicle:string;loadouts:Record<string,Record<string,any>>;owned:string[];trailer:boolean};
+export type Pose={x:number;z:number;yaw:number};
+export type Trip={region:string;seconds:number;distance:number;camps:string[];spawn:Pose;lastSave:number};
+export type Save={v:1;name:string;pose:Pose;garage:GarageData;found:string[];explored:number[];trip:Trip;waypoint:Pose|null;towVehicle:string|null;trailTimes:Record<string,number>};
+const home:Pose={x:3.5,z:2.2,yaw:-.7};
+const freshGarage=():GarageData=>({vehicle:'ranger40',loadouts:{},owned:['ranger40'],trailer:false});
+const freshTrip=():Trip=>({region:'meadow',seconds:0,distance:0,camps:[],spawn:{...home},lastSave:0});
+const finite=(v:unknown,d:number,min:number,max:number)=>typeof v==='number'&&Number.isFinite(v)?Math.min(max,Math.max(min,v)):d;
+const strings=(v:unknown)=>Array.isArray(v)?[...new Set(v.filter((x):x is string=>typeof x==='string'))]:[];
+export function validateLoadout(input:any){const out:Record<string,any>={};for(const section of KIT.VOPTS)for(const option of section.items){const v=input?.[option.k];if(option.t==='toggle'&&typeof v==='boolean')out[option.k]=v;else if(option.t==='range'&&typeof v==='number'&&Number.isFinite(v))out[option.k]=finite(v,option.min??0,option.min??0,option.max??1);else if((option.v??(option.t==='swatch'?Object.keys(KIT.PAINTS):[])).includes(v))out[option.k]=v;}return out;}
+export function loadout(g:GarageData,id=g.vehicle){return {...KIT.VDEF,...KIT.VEH[id]?.def,...g.loadouts[id]};}
+export function validatePreferences(input:any):Settings {
+ const s={...DEFAULT_SETTINGS,keys:{...DEFAULT_KEYS}};if(!input||typeof input!=='object')return s;
+ for(const key of Object.keys(s) as (keyof Settings)[]){if(typeof s[key]==='boolean'&&typeof input[key]==='boolean')(s as any)[key]=input[key];}
+ const ranges={cycle:[0,60],scale:[.5,1.5],grass:[0,1],fov:[30,70],master:[0,1],engine:[0,1],tyres:[0,1],birds:[0,1],worldv:[0,1],music:[0,1],uiv:[0,1],camShake:[0,1],textScale:[.85,1.4]};
+ for(const [k,[min,max]]of Object.entries(ranges))(s as any)[k]=finite(input[k],(s as any)[k],min,max);
+ for(const[k,values]of Object.entries({time:Object.keys(TIMES),weather:Object.keys(WEATHER),season:['summer','autumn','highland','winter','regional'],quality:Object.keys(QUALITY),units:['kmh','mph']}))if(values.includes(input[k]))(s as any)[k]=input[k];
+ for(const a of Object.keys(DEFAULT_KEYS) as Action[]){const code=input.keys?.[a];if(typeof code==='string'&&/^(Key[A-Z]|Digit[0-9]|Arrow(Up|Down|Left|Right)|Space|Shift(Left|Right)|Control(Left|Right))$/.test(code))s.keys[a]=code;}
+ return s;
+}
+function validGarage(g:any):GarageData{const base=freshGarage(),owned=strings(g?.owned).filter(id=>id in KIT.VEH);base.owned=[...new Set(['ranger40',...owned])];base.vehicle=base.owned.includes(g?.vehicle)?g.vehicle:'ranger40';base.trailer=g?.trailer===true;for(const[id,cfg]of Object.entries(g?.loadouts??{}))if(id in KIT.VEH)base.loadouts[id]=validateLoadout(cfg);return base;}
+function pose(p:any):Pose{return{x:finite(p?.x,home.x,-1000,1000),z:finite(p?.z,home.z,-1000,1000),yaw:finite(p?.yaw,home.yaw,-1e6,1e6)};}
+function validTrip(t:any):Trip{return{region:typeof t?.region==='string'?t.region:'meadow',seconds:finite(t?.seconds,0,0,1e9),distance:finite(t?.distance,0,0,1e12),camps:strings(t?.camps),spawn:pose(t?.spawn),lastSave:finite(t?.lastSave,0,0,1e14)};}
+const validTimes=(input:any)=>Object.fromEntries(Object.entries(input??{}).filter(([k,v])=>/^trail-(1[0-2]|[1-9])$/.test(k)&&typeof v==='number'&&Number.isFinite(v)&&v>0)) as Record<string,number>;
+function validSave(s:any):Save|null{return s?.v===1?{v:1,name:typeof s.name==='string'?s.name:'A quiet trip',pose:pose(s.pose),garage:validGarage(s.garage),found:strings(s.found),explored:Array.isArray(s.explored)?s.explored.filter((n:any)=>Number.isInteger(n)&&n>=0&&n<4096):[],trip:validTrip(s.trip),waypoint:s.waypoint?pose(s.waypoint):null,towVehicle:s.towVehicle in KIT.VEH?s.towVehicle:null,trailTimes:validTimes(s.trailTimes)}:null;}
+export function migrateLegacy(old:any){const o=old?.state??old??{},garage=freshGarage();if(o.vehicle in KIT.VEH){garage.vehicle=o.vehicle;garage.owned=[...new Set(['ranger40',o.vehicle])];garage.loadouts[o.vehicle]=validateLoadout(o.loadout)}garage.trailer=o.trailer===true;return{settings:validatePreferences({time:o.time,weather:o.weather,quality:o.quality,scale:o.renderScale,textScale:o.uiScale,master:o.volume}),garage,found:strings(o.visited)};}
+export type GameState={v:1;screen:Screen;stack:Screen[];settings:Settings;garage:GarageData;saves:(Save|null)[];slot:number|null;found:string[];explored:number[];waypoint:Pose|null;trip:Trip;pendingPose:Pose|null;loadingTarget:'title'|'drive';draftVehicle:string;draft:Record<string,any>;garageCategory:number;nightPreview:boolean;binding:Action|null;campMenu:string|null;credits:boolean;towVehicle:string|null;trailTimes:Record<string,number>;
+ go:(screen:Screen)=>void;back:()=>void;title:()=>void;configure:(patch:Partial<Settings>)=>void;bind:(action:Action,code:string)=>void;startTrip:(region:string,slot?:number|null,at?:Pose)=>void;continueTrip:()=>void;saveTrip:(at:Pose,seconds:number,distance:number)=>void;award:(id:string)=>void;explore:(cells:number[])=>void;applyGarage:()=>boolean;
 };
-
-export const useGameStore = create<GameActions>()(persist((set) => ({
-  time: 'golden', weather: 'clear', biome: 'meadow', vehicle: 'ranger40',
-  loadout: {}, trailer: false, ui: 'drive',
-  set: (patch) => set(patch),
-  setOption: (key, value) => set((s) => ({ loadout: { ...s.loadout, [key]: value } })),
-}), { name: 'over-the-hill-loadout', partialize: (s) => ({ time: s.time, weather: s.weather, biome: s.biome, vehicle: s.vehicle, loadout: s.loadout, trailer:s.trailer, ui: s.ui }) }));
+export const useGameStore=create<GameState>()(persist((set,get)=>({
+ v:1,screen:'loading',stack:[],settings:{...DEFAULT_SETTINGS,keys:{...DEFAULT_KEYS}},garage:freshGarage(),saves:[null,null,null],slot:null,found:[],explored:[],waypoint:null,trip:freshTrip(),pendingPose:null,loadingTarget:'title',draftVehicle:'ranger40',draft:{},garageCategory:0,nightPreview:false,binding:null,campMenu:null,credits:false,towVehicle:null,trailTimes:{},
+ go:screen=>set(s=>({screen,stack:[...s.stack,s.screen],...(screen==='garage'?{draftVehicle:s.garage.vehicle,draft:loadout(s.garage),nightPreview:false}:{} )})),
+ back:()=>set(s=>({screen:s.stack.at(-1)??'title',stack:s.stack.slice(0,-1),binding:null,nightPreview:false})),title:()=>set({screen:'title',stack:[],binding:null,nightPreview:false}),
+ configure:patch=>set(s=>({settings:validatePreferences({...s.settings,...patch})})),
+ bind:(action,code)=>{if(code==='Escape'){set({binding:null});return;}const keys={...get().settings.keys},other=(Object.keys(keys) as Action[]).find(a=>a!==action&&keys[a]===code);if(other)keys[other]=keys[action];keys[action]=code;get().configure({keys});set({binding:null});},
+ startTrip:(region,slot,at=home)=>{const s=get(),index=slot===undefined?(s.slot??s.saves.findIndex(x=>!x)):slot;if(index===null||!Number.isInteger(index)||index<0||index>=3){s.go('play');return;}const existing=s.saves[index];set({slot:index,screen:'loading',stack:[],loadingTarget:'drive',pendingPose:at,found:existing?.found??(slot!==undefined?[]:s.found),explored:existing?.explored??(slot!==undefined?[]:s.explored),garage:existing?.garage??(slot!==undefined?freshGarage():s.garage),trip:{...(existing?.trip??freshTrip()),region,spawn:at},waypoint:existing?.waypoint??null,towVehicle:existing?.towVehicle??null,trailTimes:existing?.trailTimes??{},campMenu:null,credits:false});get().saveTrip(at,get().trip.seconds,get().trip.distance);},
+ continueTrip:()=>{const s=get(),index=s.slot??s.saves.findIndex(Boolean),sv=s.saves[index];if(!sv){s.go('play');return;}set({slot:index,garage:sv.garage,found:sv.found,explored:sv.explored,trip:sv.trip,waypoint:sv.waypoint,towVehicle:sv.towVehicle,trailTimes:sv.trailTimes,pendingPose:sv.pose,screen:'loading',stack:[],loadingTarget:'drive'});},
+ saveTrip:(at,seconds,distance)=>set(s=>{const trip={...s.trip,seconds,distance,lastSave:Date.now()},saves=[...s.saves];if(s.slot!==null)saves[s.slot]={v:1,name:'A quiet trip',pose:{...at},garage:structuredClone(s.garage),found:[...s.found],explored:[...s.explored],trip,waypoint:s.waypoint,towVehicle:s.towVehicle,trailTimes:{...s.trailTimes}};return{trip,saves};}),
+ award:id=>set(s=>({found:s.found.includes(id)?s.found:[...s.found,id]})),explore:cells=>set(s=>({explored:[...new Set([...s.explored,...cells])]})),
+ applyGarage:()=>{const s=get();if(!s.garage.owned.includes(s.draftVehicle))return false;const base=loadout(s.garage,s.draftVehicle);if(Object.entries(s.draft).some(([k,v])=>v!==base[k]&&partRequirement(k,v,s.found,s.trip.camps)))return false;const garage={...s.garage,vehicle:s.draftVehicle,loadouts:{...s.garage.loadouts,[s.draftVehicle]:validateLoadout(s.draft)}};set({garage});s.saveTrip(s.saves[s.slot??-1]?.pose??s.trip.spawn,s.trip.seconds,s.trip.distance);return true;},
+}),{name:'trex-hill',version:1,storage:createJSONStorage(()=>globalThis.localStorage),partialize:s=>({v:s.v,settings:s.settings,garage:s.garage,saves:s.saves,slot:s.slot,found:s.found,explored:s.explored,waypoint:s.waypoint,trip:s.trip,towVehicle:s.towVehicle,trailTimes:s.trailTimes}),merge:(saved,current)=>{const s=saved as any;if(!s)return current;return{...current,settings:validatePreferences(s.settings),garage:validGarage(s.garage),saves:[0,1,2].map(i=>validSave(s.saves?.[i])),slot:Number.isInteger(s.slot)&&s.slot>=0&&s.slot<3?s.slot:null,found:strings(s.found),explored:Array.isArray(s.explored)?s.explored.filter((n:any)=>Number.isInteger(n)&&n>=0&&n<4096):[],waypoint:s.waypoint?pose(s.waypoint):null,trip:validTrip(s.trip),towVehicle:s.towVehicle in KIT.VEH?s.towVehicle:null,trailTimes:validTimes(s.trailTimes)};}}));
+if(typeof localStorage!=='undefined'&&!localStorage.getItem('trex-hill')){try{const old=localStorage.getItem('over-the-hill-loadout');if(old)useGameStore.setState(migrateLegacy(JSON.parse(old)));}catch{/* Invalid legacy data leaves a clean trip. */}}

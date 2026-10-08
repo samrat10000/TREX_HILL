@@ -37,3 +37,6 @@ export function resolvePreset(settings:{time:string;weather:string;biome:string}
     sunI:t.sunI*w.intensity,hemiI:t.hemiI,fogNear:t.near*(w.fog||1),fogFar:t.far*(w.fog||1),groundBiome:new THREE.Color(b.ground),wet:w.wet,bolt:settings.weather==='storm'?1:0,
   };
 }
+
+export const TIME_ORDER=['dawn','morning','noon','golden','dusk','night'] as const;
+export function resolveClock(settings:{time:string;weather:string;biome:string},phase:number){const i=((phase%6)+6)%6,index=Math.floor(i),weight=i-index,a=resolvePreset({...settings,time:TIME_ORDER[index]}),b=resolvePreset({...settings,time:TIME_ORDER[(index+1)%6]});for(const key of ['top','horizon','fog','ground','sun','hemi','groundBiome'] as const)a[key].lerp(b[key],weight);for(const key of ['el','night','wind','rain','snow','sunI','hemiI','fogNear','fogFar','wet'] as const)a[key]+=(b[key]-a[key])*weight;return a;}

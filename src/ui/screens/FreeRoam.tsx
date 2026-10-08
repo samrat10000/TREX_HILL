@@ -1,0 +1,7 @@
+import { useState } from 'react';
+import { useGameStore } from '../../state';
+import { Back,Button,Card,Segment,Toggle } from '../controls';
+export { REGIONS } from '../../game/worldData';
+import { REGIONS,regionRequirement } from '../../game/worldData';
+export function regionLock(id:string,s=useGameStore.getState()){return regionRequirement(id,s.found,s.garage)}
+export function FreeRoam(){const s=useGameStore(),[region,setRegion]=useState('meadow'),[time,setTime]=useState(s.settings.time),[weather,setWeather]=useState(s.settings.weather),[cozy,setCozy]=useState(s.settings.cozy);return <><Back/><div className="sheet glass single"><div className="body"><h2>Free roam</h2><p>Pick where to wake up. The road is yours to follow.</p><div className="cards">{REGIONS.map(r=><Card key={r.id} title={r.name} detail={r.sub} art={`linear-gradient(${r.colors.join(',')})`} selected={region===r.id} locked={regionLock(r.id,s)} onClick={()=>{if(!regionLock(r.id,s))setRegion(r.id)}}/>)}</div><Segment label="Wake up at" value={time} values={['dawn','morning','noon','golden','dusk','night']} onChange={setTime}/><Segment label="Weather" value={weather} values={['clear','rain','storm','mist','snow']} onChange={setWeather}/><Toggle label="Cozy mode" detail="Automatic recovery. No damage, fuel or deadlines." value={cozy} onChange={setCozy}/><div className="actions"><Button primary onClick={()=>{s.configure({time,weather,cozy});const r=REGIONS.find(r=>r.id===region)!;s.startTrip(region,undefined,{x:r.x+3.5,z:r.z+2.2,yaw:-.7})}}>Head out</Button></div></div></div></>}

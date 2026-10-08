@@ -1,0 +1,11 @@
+import { describe,expect,it } from 'vitest';
+import { KIT } from '../src/kit/core';
+import { POSTCARDS,partRequirement,garageStats,fogCells } from '../src/game/progression';
+import { useGameStore,loadout } from '../src/state';
+describe('5. garage progression',()=>{
+ it('unlocks chains before entering the region that requires them',()=>{expect(partRequirement('tires','chains',[],[])).toBeTruthy();expect(partRequirement('tires','chains',POSTCARDS.slice(0,5).map(c=>c.id),[])).toBeUndefined()});
+ it('awards a new part at every five-card milestone without counting internal flags',()=>{let previous=0;const internal=['region-meadow','region-pine','view-pine-lookout'],options=KIT.VOPTS.flatMap(s=>s.items).flatMap(o=>(o.v??[]).map(value=>({key:o.k,value})));for(let count=0;count<=70;count+=5){const cards=POSTCARDS.slice(0,count).map(c=>c.id),unlocked=options.filter(o=>!partRequirement(o.key,o.value,[...cards,...internal],[])).length;if(count)expect(unlocked).toBeGreaterThan(previous);previous=unlocked;}expect(partRequirement('engine','v8',internal,[])).toBeTruthy();});
+ it('rejects locked parts and unowned vehicle application',()=>{const previous=useGameStore.getState(),g={vehicle:'ranger40',loadouts:{},owned:['ranger40'],trailer:false};useGameStore.setState({garage:g,found:[],trip:{...previous.trip,camps:[]},draftVehicle:'ranger40',draft:{...loadout(g),engine:'electric'}});expect(useGameStore.getState().applyGarage()).toBe(false);useGameStore.setState({draftVehicle:'bus',draft:loadout(g,'bus')});expect(useGameStore.getState().applyGarage()).toBe(false)});
+ it('previews meaningful grip, power, clearance and night deltas',()=>{const g=useGameStore.getState().garage,c=loadout(g),a=garageStats(c),b=garageStats({...c,tires:'mud',engine:'v8',lift:.3,lightbar:true});expect(b.Grip).toBeGreaterThan(a.Grip);expect(b.Power).toBeGreaterThan(a.Power);expect(b.Clearance).toBeGreaterThan(a.Clearance);expect(b.Night).toBeGreaterThan(a.Night)});
+ it('reveals actual map cells only inside the discovery radius',()=>{const cells=fogCells(0,0);expect(cells.length).toBeGreaterThan(30);for(const cell of cells)expect(Math.hypot((cell%64)*32-1008,Math.floor(cell/64)*32-1008)).toBeLessThanOrEqual(120);expect(new Set(cells).size).toBe(cells.length)});
+});

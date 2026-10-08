@@ -1,0 +1,12 @@
+{
+  "checks": [
+    "First gesture starts a real AudioWorklet",
+    "Worklet renders audible output",
+    "inline6 reaches the DSP",
+    "v8 reaches the DSP",
+    "diesel reaches the DSP",
+    "electric reaches the DSP",
+    "All five volume controls reach independent buses"
+  ],
+  "errors": []
+}

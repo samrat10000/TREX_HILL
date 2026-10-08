@@ -1,0 +1,17 @@
+{
+  "checks": [
+    "World renders without scene failures",
+    "Fresh boot lands at title",
+    "Three real save slots",
+    "Six region choices",
+    "Six garage categories and vehicle bays",
+    "Seven settings tabs",
+    "Rebinding updates saved input map",
+    "Optional HUD is off by default",
+    "Game has no viewer panels or world dropdowns",
+    "Back returns to previous pause screen",
+    "Back to title keeps saved trip",
+    "Reload keeps preferences and real trip"
+  ],
+  "errors": []
+}

@@ -1,0 +1,8 @@
+import fs from 'node:fs/promises';
+const targets=await(await fetch('http://127.0.0.1:9222/json')).json(),ws=new WebSocket(targets.find(t=>t.type==='page').webSocketDebuggerUrl),pending=new Map();let id=0;
+const errors=[];await new Promise(resolve=>ws.onopen=resolve);ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id){pending.get(m.id)?.(m.result);pending.delete(m.id)}else if(m.method==='Runtime.consoleAPICalled'&&m.params.type==='error')errors.push(m.params.args.map(a=>a.value||a.description).join(' '));};
+const send=(method,params={})=>new Promise(resolve=>{const n=++id;pending.set(n,resolve);ws.send(JSON.stringify({id:n,method,params}))});
+if(process.argv.includes('--close')){await new Promise(resolve=>{ws.onclose=resolve;send('Browser.close').then(resolve)});process.exit(0);}
+if(process.argv.includes('--prepare')){await send('Runtime.evaluate',{expression:`localStorage.setItem('over-the-hill-loadout',JSON.stringify({state:{quality:'low',renderScale:.75},version:2}))`});await send('Page.reload',{ignoreCache:true});ws.close();process.exit(0);}
+await send('Runtime.enable');console.log(JSON.stringify(await send('Runtime.evaluate',{expression:`JSON.stringify({body:document.body.innerText.slice(0,1600),debug:!!window.__TREX_DEBUG__,time:window.__TREX_DEBUG__?.time,rig:!!window.__TREX_DEBUG__?.rig,canvas:document.querySelector('canvas')?.width,grass:{visible:window.__TREX_DEBUG__?.grassDebug?.visible,count:window.__TREX_DEBUG__?.grassDebug?.count},terrain:!!window.__TREX_DEBUG__?.terrainDebug})`,returnByValue:true})));
+const shot=await send('Page.captureScreenshot',{format:'png'});if(shot?.data)await fs.writeFile('artifacts/verification/current.png',Buffer.from(shot.data,'base64'));console.log(JSON.stringify(errors));ws.close();

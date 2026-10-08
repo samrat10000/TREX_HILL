@@ -1,0 +1,12 @@
+{
+  "checks": [
+    "Camp rest sets time, spawn and a real save",
+    "Lookout reveals the real surrounding map",
+    "Trail awards a postcard without a default timer",
+    "Five postcards permit the first part tier",
+    "Found vehicle has an actual tow rig",
+    "Outpost delivery adds the vehicle to the garage"
+  ],
+  "errors": [],
+  "note": "Interaction integration test uses explicit pose moves, not a driving-duration benchmark."
+}

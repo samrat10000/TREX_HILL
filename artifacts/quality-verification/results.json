@@ -1,0 +1,30 @@
+{
+  "checks": [
+    "High preset stays within desktop calls and triangles",
+    "Medium mobile draw calls stay within budget",
+    "Small-screen map retains waypoint and travel actions",
+    "Small-screen garage retains all six statistics",
+    "Garage panels fit the viewport"
+  ],
+  "samples": [
+    {
+      "preset": "high",
+      "calls": 244,
+      "triangles": 668879,
+      "geometries": 165,
+      "textures": 21,
+      "fps": 0.3947887879984209,
+      "build": 44.40000003576279
+    },
+    {
+      "preset": "medium-mobile",
+      "calls": 100,
+      "triangles": 319286,
+      "geometries": 106,
+      "textures": 4,
+      "fps": 1.0278548668550118
+    }
+  ],
+  "errors": [],
+  "note": "Software GPU. Draw budgets measured; hardware fps not established."
+}

@@ -1,0 +1,14 @@
+import { describe,expect,it } from 'vitest';
+import { chunkPlan } from '../src/game/chunks';
+import { POIS,REGIONS,regionAt,regionBlend,regionRequirement } from '../src/game/worldData';
+import { TRAILS,terrainHeight,WORLD_SIZE,surfaceAt } from '../src/game/terrain';
+import { useGameStore } from '../src/state';
+describe('2. connected free world',()=>{
+ it('loads nearest chunks first and uses unload hysteresis',()=>{const a=chunkPlan(0,0,[]);expect(a.wanted).toHaveLength(49);expect(a.add[0]).toBe('8,8');const b=chunkPlan(128,0,a.wanted);expect(b.remove).toHaveLength(0);expect(b.add).toHaveLength(7);const c=chunkPlan(256,0,a.wanted);expect(c.remove).toHaveLength(7);expect(chunkPlan(1000,1000,[]).wanted).toHaveLength(16)});
+ it('keeps residency bounded during a full-world sweep',()=>{const resident=new Set<string>();for(let x=-900;x<=900;x+=64){const p=chunkPlan(x,0,resident);p.remove.forEach(k=>resident.delete(k));p.add.forEach(k=>resident.add(k));expect(resident.size).toBeLessThanOrEqual(81);for(const k of resident)expect(k.split(',').map(Number).every(v=>v>=0&&v<16)).toBe(true)}});
+ it('has six distinct regions and continuous boundary blends',()=>{expect(WORLD_SIZE).toBe(2048);for(const r of REGIONS)expect(regionAt(r.x,r.z).id).toBe(r.id);for(let x=-600;x<600;x+=10){const a=regionBlend(x,0),b=regionBlend(x+.001,0);expect(Math.abs(a.weight-b.weight)).toBeLessThan(.001)}});
+ it('matches the free-roam cards to actual gate requirements',()=>{const g=useGameStore.getState().garage;expect(regionRequirement('canyon',[],g)).toBeTruthy();expect(regionRequirement('canyon',['pine-lookout'],g)).toBeUndefined();expect(regionRequirement('pass',[],{...g,loadouts:{ranger40:{tires:'chains'}}})).toBeUndefined();expect(regionRequirement('coast',['ferry-ticket'],g)).toBeUndefined()});
+ it('requires snow chains on the currently driven vehicle',()=>{const garage={vehicle:'ranger40',owned:['ranger40','trek110'],loadouts:{trek110:{tires:'chains'}},trailer:false};expect(regionRequirement('pass',[],garage)).toBe('Fit snow chains');expect(regionRequirement('pass',[],{...garage,vehicle:'trek110'})).toBeUndefined();});
+ it('grades both ford approaches and retains shallow water at the crossing',()=>{for(const ford of POIS.filter(p=>p.kind==='ford')){expect(surfaceAt(ford.x,ford.z)).toBe('water');let steepest=0;for(let dx=-80;dx<=80;dx++)steepest=Math.max(steepest,Math.abs(terrainHeight(ford.x+dx+.5,ford.z)-terrainHeight(ford.x+dx-.5,ford.z)));expect(steepest,ford.id).toBeLessThan(.8);}});
+ it('provides the planned places and smooth connecting trails',()=>{for(const [kind,n] of [['camp',6],['tower',4],['outpost',3],['photo',20],['vehicle',10]] as const)expect(POIS.filter(p=>p.kind===kind)).toHaveLength(n);for(const trail of TRAILS)for(const [x,z] of trail){expect(Number.isFinite(terrainHeight(x,z))).toBe(true);expect(Math.abs(terrainHeight(x-.001,z)-terrainHeight(x+.001,z))).toBeLessThan(.01)}});
+});

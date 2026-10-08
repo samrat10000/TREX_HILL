@@ -6,7 +6,7 @@ export type VehicleConfig = {
   tireSize?: number; lift?: number; front?: string; load?: string; rack?: boolean; roofLamps?: boolean;
   lightbar?: boolean; fog?: boolean; snorkel?: boolean; spare?: boolean; ladder?: boolean; flaps?: boolean;
   cans?: boolean; antenna?: boolean; flag?: string; armor?: boolean; engine?: string; susp?: string;
-  lights?: string; num?: number; [key: string]: unknown;
+  lights?: string; num?: number; spring?: number; damping?: number; preload?: number; [key: string]: unknown;
 };
 export type VehicleWheel = { node: THREE.Group; steer: THREE.Group; spin: THREE.Group; x: number; y: number; z: number; front: boolean; dir: number; air?: boolean; comp?: number; norm?: number; c?: number };
 export type VehicleRig = {
@@ -30,5 +30,6 @@ export type KitApi = {
   Cloth:(...args:any[])=>any;Whip:(...args:any[])=>any;bladeGeo:()=>THREE.BufferGeometry;
   pine:(opts?:any)=>THREE.Group;broadleaf:(opts?:any)=>THREE.Group;snag:(opts?:any)=>THREE.Group;palm:(opts?:any)=>THREE.Group;cactus:(opts?:any)=>THREE.Group;bush:(opts?:any)=>THREE.Group;rock:(opts?:any)=>THREE.Group;reeds:(opts?:any)=>THREE.Group;flowers:(opts?:any)=>THREE.Group;stump:(opts?:any)=>THREE.Group;
   aframe:(opts?:any)=>THREE.Group;logCabin:(opts?:any)=>THREE.Group;tower:(opts?:any)=>THREE.Group;lighthouse:(opts?:any)=>THREE.Group;pier:(opts?:any)=>THREE.Group;bridge:(opts?:any)=>THREE.Group;ferry:(opts?:any)=>THREE.Group;outpost:(opts?:any)=>THREE.Group;firepit:(opts?:any)=>THREE.Group;tent:(opts?:any)=>THREE.Group;chair:(opts?:any)=>THREE.Group;lantern:(opts?:any)=>THREE.Group;fairyLights:(opts?:any)=>THREE.Group;props:(opts?:any)=>THREE.Group;beacon:(opts?:any)=>THREE.Group;flock:(opts?:any)=>THREE.Group;deer:(opts?:any)=>THREE.Group;butterflies:(opts?:any)=>THREE.Group;
-  Rain:(...args:any[])=>THREE.Group;Snow:(...args:any[])=>THREE.Group;Lightning:(...args:any[])=>THREE.Group;Fireflies:(...args:any[])=>THREE.Group;Aurora:(...args:any[])=>THREE.Group;cloud:(opts?:any)=>THREE.Group;fogBank:(opts?:any)=>THREE.Group;Smoke:(...args:any[])=>THREE.Group;
+  Rain:(...args:any[])=>THREE.LineSegments;Snow:(...args:any[])=>THREE.Points;Lightning:(...args:any[])=>THREE.Group;Fireflies:(...args:any[])=>THREE.Group;Aurora:(...args:any[])=>THREE.Group;cloud:(opts?:any)=>THREE.Group;fogBank:(opts?:any)=>THREE.Group;Smoke:(...args:any[])=>THREE.Group;
+  ridge:(opts?:any)=>THREE.Group;rangerGate:(opts?:any)=>THREE.Group;waterfall:(opts?:any)=>THREE.Group;owl:(opts?:any)=>THREE.Group;
 };

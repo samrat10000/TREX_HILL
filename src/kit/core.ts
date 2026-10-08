@@ -3,10 +3,10 @@ import * as THREE from 'three';
 import type { KitApi } from './types';
 THREE.ColorManagement.enabled = false;
 
-/* Hill Kit â€” pure model factories (KIT). Extracted from hillkit.html. Built against three r147 (UMD globals). See HILLKIT_REFACTOR.md. */
+/* Hill Kit — pure model factories (KIT). Extracted from hillkit.html. Built against three r147 (UMD globals). See HILLKIT_REFACTOR.md. */
 'use strict';
 /* ============================================================================
-   KIT â€” pure model factories. No DOM, no renderer. Every builder returns a
+   KIT — pure model factories. No DOM, no renderer. Every builder returns a
    THREE.Group; animated ones expose group.userData.update(dt, t, env).
    env = { wind:Number, night:0..1, time:Number }
 ============================================================================ */
@@ -22,10 +22,10 @@ const lamps=new Set(),glowSprites=new Set(),MC=new Map();
 function mat(c,o={}){const k=c+'|'+JSON.stringify(o);let m=MC.get(k);if(m)return m;
  m=new T.MeshStandardMaterial({color:c,flatShading:!o.smooth,roughness:o.r??.86,metalness:o.m??0,transparent:o.op!==undefined,opacity:o.op??1,vertexColors:!!o.vc,side:o.ds?T.DoubleSide:T.FrontSide,depthWrite:o.op===undefined});
  if(o.e!==undefined){m.emissive=new T.Color(o.e);m.emissiveIntensity=o.ei??1;m.userData.base=o.ei??1;if(o.lamp)lamps.add(m)}
- MC.set(k,m);return m}
+ m.userData.kitShared=true;MC.set(k,m);return m}
 let _gt=null;function glowTex(){if(!HAS_DOM)return null;if(_gt)return _gt;const c=document.createElement('canvas');c.width=c.height=128;const g=c.getContext('2d'),r=g.createRadialGradient(64,64,0,64,64,64);
  r.addColorStop(0,'rgba(255,255,255,1)');r.addColorStop(.18,'rgba(255,255,255,.55)');r.addColorStop(.5,'rgba(255,255,255,.12)');r.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=r;g.fillRect(0,0,128,128);_gt=new T.CanvasTexture(c);return _gt}
-/* glow(parent,color,size,x,y,z,auto) â€” additive halo. auto=true follows night level */
+/* glow(parent,color,size,x,y,z,auto) — additive halo. auto=true follows night level */
 function glow(p,color,size,x,y,z,auto=true,op=.9){const m=new T.SpriteMaterial({map:glowTex(),color,transparent:true,opacity:op,depthWrite:false,blending:T.AdditiveBlending,fog:false});
  const s=new T.Sprite(m);s.scale.setScalar(size);s.position.set(x,y,z);s.userData.base=op;s.renderOrder=5;if(auto)glowSprites.add(s);p.add(s);return s}
 
@@ -45,7 +45,7 @@ function rockGeo(r,detail,sq,sd,top,base){const g=IC(r,detail),p=g.attributes.po
  for(let i=0;i<p.count;i++){c.copy(A).lerp(Bc,T.MathUtils.smoothstep(n.getY(i),.35,.85));c.multiplyScalar(.92+h3(Math.round(p.getX(i)*9),Math.round(p.getY(i)*9),sd)*.14);col.set([c.r,c.g,c.b],i*3)}
  g.setAttribute('color',new T.BufferAttribute(col,3));return g}
 
-/* ---------- cloth (verlet) â€” physically simulated flags ---------- */
+/* ---------- cloth (verlet) — physically simulated flags ---------- */
 function Cloth(w,h,nx,ny,color){const g=new T.PlaneGeometry(w,h,nx,ny),N=(nx+1)*(ny+1),P=new Float32Array(N*3),Q=new Float32Array(N*3),cons=[];
  const id=(i,j)=>j*(nx+1)+i,dx=w/nx,dy=h/ny;
  for(let j=0;j<=ny;j++)for(let i=0;i<=nx;i++){if(i<nx)cons.push(id(i,j),id(i+1,j),dx);if(j<ny)cons.push(id(i,j),id(i,j+1),dy);if(i<nx&&j<ny)cons.push(id(i,j),id(i+1,j+1),Math.hypot(dx,dy))}
@@ -73,13 +73,14 @@ function Whip(len,segs,m,tip){const root=new T.Group(),nodes=[];let p=root;for(l
  return{root,top,update}}
 
 /* ============================================================================
-   VEHICLES â€” profile-extruded bodies (no boxes), per-pixel mud/rust shader,
+   VEHICLES — profile-extruded bodies (no boxes), per-pixel mud/rust shader,
    parts kit, lights, suspension rig. Axes: +x forward, +y up, +z right.
 ============================================================================ */
 const PAINTS={tangerine:0xd9622b,cherry:0xcd3a35,mustard:0xe2a72c,lime:0x93b23c,sage:0x7c9473,forest:0x2f5a3e,sky:0x7cc4d6,cobalt:0x4a74b4,cream:0xe9e0ca,slate:0x4b5566,olive:0x5f6b3c,rust:0x8c4b2b,rose:0xd8877f,ink:0x2b2d3a};
 const ENGINES={inline6:{name:'Inline-6',hp:135,top:22,acc:5.2,cyl:6,pitch:1},v8:{name:'Big-block V8',hp:240,top:31,acc:8.2,cyl:8,pitch:.8,scoop:true},diesel:{name:'Turbo diesel',hp:160,top:20,acc:5.8,cyl:4,pitch:.6,climb:1.4},electric:{name:'Electric twin',hp:300,top:29,acc:10,cyl:0,pitch:2}};
 const SUSP={soft:{k:26,c:2.6,travel:1.3,name:'Long-travel soft'},stock:{k:38,c:3.4,travel:1,name:'Stock'},stiff:{k:62,c:5.6,travel:.75,name:'Rally stiff'}};
 const VDEF={paint:null,roof:'white',livery:'none',wear:.35,tires:'allterrain',rims:'steel',tireSize:1,lift:0,front:'bumper',rack:true,load:'none',roofLamps:false,lightbar:false,fog:false,snorkel:false,spare:true,ladder:false,flaps:true,cans:false,antenna:true,flag:'none',armor:false,engine:'inline6',susp:'stock',lights:'auto',num:7};
+VDEF.spring=1;VDEF.damping=1;VDEF.preload=1;
 const VEH={
  ranger40:{name:'Ranger 40',blurb:'Short-wheelbase classic. The one on the box art.',L:3.85,W:1.66,wr:.42,ww:.3,axles:[1.15,-1.13],archR:.5,yb:.1,top:[[1.93,.5],[1.9,.74],[1.72,.8],[.45,.82],[-1.93,.82]],cab:{p:[[-1.86,.82],[-1.86,1.48],[.2,1.48],[.36,.82]],w:1.52,pil:[.45]},lights:'round',lightY:.62,grill:'slots',bump:0x2a2a2e,flare:'body',doors:[.3,-.55],def:{paint:'tangerine',roof:'white',wear:.45}},
  trek110:{name:'Trekker 110',blurb:'Long-wheelbase wagon with a flat roof for big loads.',L:4.45,W:1.79,wr:.43,ww:.3,axles:[1.45,-1.35],archR:.52,yb:.12,top:[[2.22,.48],[2.18,.78],[2.0,.84],[.85,.86],[-2.22,.86]],cab:{p:[[-2.16,.86],[-2.16,1.62],[.62,1.62],[.74,.86]],w:1.66,pil:[.28,.6]},lights:'round',lightY:.66,grill:'mesh',flare:'black',bump:0x1d1d20,doors:[.55,-.35],def:{paint:'sky',roof:'white',load:'cargo',roofLamps:true}},
@@ -88,8 +89,8 @@ const VEH={
  cruiser60:{name:'Cruiser 60',blurb:'Boxy family wagon that will outlive everyone.',L:4.7,W:1.82,wr:.43,ww:.31,axles:[1.36,-1.35],archR:.53,yb:.12,top:[[2.35,.48],[2.32,.8],[2.12,.84],[.85,.86],[-2.35,.86]],cab:{p:[[-2.28,.86],[-2.22,1.56],[.35,1.56],[.8,.86]],w:1.68,pil:[.3,.6]},lights:'dual',lightY:.64,grill:'slots',flare:'body',bump:0x2a2a2e,doors:[.62,-.45],def:{paint:'cream',roof:'body',load:'cargo',roofLamps:true,wear:.5}},
  hauler70:{name:'Hauler 70',blurb:'Single-cab pickup. Cargo rides in the bed.',L:5.0,W:1.82,wr:.44,ww:.31,axles:[1.62,-1.5],archR:.54,yb:.12,top:[[2.5,.48],[2.46,.8],[2.25,.85],[1.0,.88],[-2.5,.88]],cab:{p:[[-.4,.88],[-.4,1.58],[.55,1.58],[.98,.88]],w:1.7,pil:[]},bed:[-2.42,-.5],lights:'square',lightY:.64,grill:'mesh',flare:'black',bump:0x1d1d20,doors:[.25],def:{paint:'cherry',roof:'body',load:'cargo',fog:true,rack:false}},
  van:{name:'Overland Van',blurb:'Split-window camper van. Slow, loved, unstoppable.',L:4.6,W:1.82,wr:.38,ww:.28,axles:[1.45,-1.38],archR:.47,yb:.12,top:[[2.3,.3],[2.33,.6],[2.25,.82],[2.0,.86],[-2.3,.86]],cab:{p:[[-2.28,.86],[-2.2,1.78],[1.55,1.78],[2.08,.86]],w:1.74,pil:[.12,.36,.6,.82]},lights:'round',lightY:.5,grill:'bars',flare:null,bump:0xe8e8e8,doors:[1.2,.2],def:{paint:'sky',roof:'white',livery:'twotone',load:'cargo',tires:'road',rims:'white',wear:.2,antenna:false}},
- army6:{name:'Mule 6Ã—6',blurb:'Ex-army six-wheeler with a canvas tilt.',L:6.9,W:2.35,wr:.56,ww:.42,axles:[2.45,-1.25,-2.6],archR:.66,yb:.2,top:[[3.45,.6],[3.4,1.05],[3.2,1.1],[2.1,1.12],[-3.45,1.12]],cab:{p:[[1.05,1.12],[1.05,2.05],[1.95,2.05],[2.2,1.12]],w:2.1,pil:[]},canvas:[-3.38,.92],lights:'round',lightY:.85,grill:'bars',flare:'black',bump:0x2a2a22,doors:[1.55],def:{paint:'olive',roof:'body',rack:false,tires:'mud',wear:.55,spare:false,cans:true,flag:'whip',engine:'diesel'}},
- expedition:{name:'Basecamp 4Ã—4',blurb:'Portal-axle expedition truck with a living box.',L:6.6,W:2.35,wr:.6,ww:.42,axles:[2.0,-1.75],archR:.72,yb:.22,top:[[3.3,.7],[3.25,1.12],[3.0,1.18],[2.2,1.2],[-3.3,1.2]],cab:{p:[[1.35,1.2],[1.35,2.2],[2.25,2.2],[2.7,1.2]],w:2.1,pil:[]},box:[-3.22,1.2],lights:'round',lightY:.9,grill:'bars',bump:0x1d1d20,flare:'black',doors:[1.9],def:{paint:'mustard',roof:'body',rack:false,tires:'mud',rims:'beadlock',ladder:true,lightbar:true,wear:.4,engine:'diesel'}},
+ army6:{name:'Mule 6×6',blurb:'Ex-army six-wheeler with a canvas tilt.',L:6.9,W:2.35,wr:.56,ww:.42,axles:[2.45,-1.25,-2.6],archR:.66,yb:.2,top:[[3.45,.6],[3.4,1.05],[3.2,1.1],[2.1,1.12],[-3.45,1.12]],cab:{p:[[1.05,1.12],[1.05,2.05],[1.95,2.05],[2.2,1.12]],w:2.1,pil:[]},canvas:[-3.38,.92],lights:'round',lightY:.85,grill:'bars',flare:'black',bump:0x2a2a22,doors:[1.55],def:{paint:'olive',roof:'body',rack:false,tires:'mud',wear:.55,spare:false,cans:true,flag:'whip',engine:'diesel'}},
+ expedition:{name:'Basecamp 4×4',blurb:'Portal-axle expedition truck with a living box.',L:6.6,W:2.35,wr:.6,ww:.42,axles:[2.0,-1.75],archR:.72,yb:.22,top:[[3.3,.7],[3.25,1.12],[3.0,1.18],[2.2,1.2],[-3.3,1.2]],cab:{p:[[1.35,1.2],[1.35,2.2],[2.25,2.2],[2.7,1.2]],w:2.1,pil:[]},box:[-3.22,1.2],lights:'round',lightY:.9,grill:'bars',bump:0x1d1d20,flare:'black',doors:[1.9],def:{paint:'mustard',roof:'body',rack:false,tires:'mud',rims:'beadlock',ladder:true,lightbar:true,wear:.4,engine:'diesel'}},
  bus:{name:'Field Bus',blurb:'Retired school bus. Seats twenty, sleeps six.',L:9.2,W:2.45,wr:.5,ww:.36,axles:[3.0,-2.5],archR:.6,yb:.18,top:[[4.6,.55],[4.55,1.0],[4.3,1.06],[3.35,1.1],[-4.6,1.14]],cab:{p:[[-4.55,1.14],[-4.5,2.55],[3.05,2.55],[3.3,1.12]],w:2.38,pil:[.07,.15,.24,.33,.42,.51,.6,.69,.78,.87]},lights:'round',lightY:.8,grill:'bars',bump:0x1d1d20,flare:null,doors:[],def:{paint:'mustard',roof:'body',livery:'stripe',rack:false,tires:'road',spare:false,wear:.45,antenna:false,engine:'diesel'}},
  scrapjaw:{name:'Scrapjaw',blurb:'Wasteland pickup. Welded plate, ram and grates.',L:5.0,W:1.82,wr:.44,ww:.31,axles:[1.62,-1.5],archR:.54,yb:.12,top:[[2.5,.48],[2.46,.8],[2.25,.85],[1.0,.88],[-2.5,.88]],cab:{p:[[-.4,.88],[-.4,1.58],[.55,1.58],[.98,.88]],w:1.7,pil:[]},bed:[-2.42,-.5],lights:'square',lightY:.64,grill:'mesh',flare:'black',bump:0x1d1d20,doors:[.25],def:{paint:'rust',roof:'body',armor:true,wear:.95,front:'ram',tires:'mud',rims:'black',lightbar:true,load:'cargo',flag:'flag',rack:false,lift:.12,engine:'v8'}}
 };
@@ -110,7 +111,7 @@ function paintMat(color,wear,uInv,mudTop,band,r=.62){const m=new T.MeshStandardM
   diffuseColor.rgb*=1.-.16*uWear*(1.-n1);`)};
  m.customProgramCacheKey=()=>'paint';return m}
 
-function numberTex(n,col){if(!HAS_DOM)return null;const c=document.createElement('canvas');c.width=c.height=128;const g=c.getContext('2d');g.fillStyle='#f4efe4';g.beginPath();g.arc(64,64,60,0,TAU);g.fill();g.fillStyle=col;g.font='600 78px Fredoka, sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(String(n),64,70);const t=new T.CanvasTexture(c);return t}
+function numberTex(n,col){if(!HAS_DOM)return null;const c=document.createElement('canvas');c.width=c.height=128;const g=c.getContext('2d');g.fillStyle='#f4efe4';g.beginPath();g.arc(64,64,60,0,TAU);g.fill();g.fillStyle=col;g.font='600 78px Inter, sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(String(n),64,70);const t=new T.CanvasTexture(c);return t}
 
 function bodyPts(s,archR,ay){const pts=[],L2=s.L/2,yb=s.yb;pts.push([-L2+.06,yb]);
  for(const ax of [...s.axles].sort((a,b)=>a-b)){const dy=yb-ay;if(dy>=archR)continue;const a0=Math.asin(Math.max(-1,Math.min(1,dy/archR)));for(let i=0;i<=8;i++){const a=(Math.PI-a0)+(2*a0-Math.PI)*i/8;pts.push([ax+Math.cos(a)*archR,ay+Math.sin(a)*archR])}}
@@ -265,9 +266,9 @@ function cargo(p,x0,x1,y,zw){const cols=[0x3d6b4a,0xc94b3a,0x2f4a6b,0xd9a441,0x5
   else{add(p,new T.TorusGeometry(.3,.13,6,14),mat(0x26262b),x+.43,y+.13,0,Math.PI/2,0,0);x+=.9}}
  add(p,CY(.12,.12,zw*1.6,8).rotateX(Math.PI/2),mat(0x8a6a3a),x0+.1,y+.12,0)}
 
-/* caravan (towable) â€” returns rig-like object with hitch */
+/* caravan (towable) — returns rig-like object with hitch */
 function caravan(o={}){seed(o.seed||3);const g=new T.Group(),c=new T.Color(PAINTS[o.paint]||0xf2ede2),uInv={value:new T.Matrix4()},PM=paintMat(c,o.wear??.25,uInv,.4,-9,.7);
- const L=4.6,W=2.1,r=.34,body=new T.Group();g.add(body);
+ const L=4.6,W=2.1,r=.34,body=new T.Group();g.add(body);body.userData.bakePivot=true;
  const pts=[[2.3,.42],[2.42,.9],[2.32,2.1],[2.05,2.38],[-2.05,2.38],[-2.3,2.12],[-2.32,.42]],a0=Math.asin(.08/.46);for(let i=0;i<=8;i++){const a=(Math.PI-a0)+(2*a0-Math.PI)*i/8;pts.push([Math.cos(a)*.46,.34+Math.sin(a)*.46])}add(body,ext(pts,W,.08),PM);
  add(body,CY(.44,.44,W-.1,12,true,Math.PI/2,Math.PI).rotateX(Math.PI/2),mat(0x141416,{ds:true}),0,.34,0,0,0,0,false);
  for(const z of[-1,1]){add(body,B(L-.4,.09,.006),mat(o.stripe||0xd06a3a),0,1.15,z*(W/2+.004),0,0,0,false);add(body,B(L-.4,.04,.006),mat(o.stripe||0xd06a3a),0,1.03,z*(W/2+.004),0,0,0,false);
@@ -381,7 +382,7 @@ function lighthouse(o={}){const g=new T.Group(),H=12;add(g,CY(2.7,3.1,1,12),mat(
  add(g,CY(.66,.66,1.2,12),mat(0xfff4d6,{e:0xffd890,ei:1.5,lamp:true,r:.2}),0,top+.85,0);for(let i=0;i<8;i++){const a=i/8*TAU;add(g,B(.05,1.2,.05),mat(0x2b2b30),Math.cos(a)*.68,top+.85,Math.sin(a)*.68)}
  add(g,CY(0,.85,.75,12),mat(0xc23a2e),0,top+1.82,0);add(g,IC(.12,0),mat(0x2b2b30),0,top+2.25,0);glow(g,0xfff0b0,5,0,top+.85,0,true,.95);
  for(const y of[4,8])add(g,cbox(.5,.7,.1,.02),WIN(),0,y,1.6-y*.07);add(g,cbox(.9,1.7,.12,.02),mat(0x3a4a5a),0,1.85,1.82);
- const rot=new T.Group();rot.position.y=top+.85;g.add(rot);const bmM=new T.ShaderMaterial({uniforms:{op:{value:0}},transparent:true,depthWrite:false,blending:T.AdditiveBlending,side:T.DoubleSide,
+ const rot=new T.Group();rot.userData.bakePivot=true;rot.position.y=top+.85;g.add(rot);const bmM=new T.ShaderMaterial({uniforms:{op:{value:0}},transparent:true,depthWrite:false,blending:T.AdditiveBlending,side:T.DoubleSide,
   vertexShader:'varying vec2 vU;void main(){vU=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:'uniform float op;varying vec2 vU;void main(){float a=pow(1.-vU.y,1.6)*op;gl_FragColor=vec4(1.,.95,.75,a);}'});
  for(const s of[1,-1]){const cg=new T.CylinderGeometry(3.2,.3,30,18,1,true);cg.translate(0,15,0);cg.rotateZ(-Math.PI/2*s);rot.add(new T.Mesh(cg,bmM))}
  const hs=new T.Group();hs.position.set(4.2,0,1);g.add(hs);add(hs,cbox(3,2.2,2.6,.05),mat(0xf2eee6),0,1.1,0);slabRoof(hs,2.6,3.2,2.2,3.3,mat(0xc23a2e),.25,.14);hs.children.slice(-2).forEach(m=>m.rotation.y=0);
@@ -395,7 +396,7 @@ function pier(o={}){const g=new T.Group(),Lg=o.len||12,wd=mat(0x8a6a4a),wd2=mat(
 function bridge(o={}){const g=new T.Group(),Lg=14,wd=mat(0x8a6a4a),wd2=mat(0x6a4a32);for(let x=-Lg/2;x<Lg/2;x+=.35)add(g,B(.3,.1,3.4),rnd()<.5?wd:mat(0x9a7a5a),x+.17,3,0);
  for(let x=-Lg/2+1;x<Lg/2;x+=3){for(const z of[-1.5,1.5])beam(g,V3(x,0,z*1.15),V3(x,3,z),.12,wd2,6);beam(g,V3(x,.2,-1.6),V3(x,2.8,1.6),.06,wd2,4);beam(g,V3(x,.2,1.6),V3(x,2.8,-1.6),.06,wd2,4);add(g,B(.3,.25,3.8),wd2,x,2.85,0)}
  for(const z of[-1.75,1.75]){beam(g,V3(-Lg/2,3.9,z),V3(Lg/2,3.9,z),.06,wd2,5);for(let x=-Lg/2;x<=Lg/2;x+=1.4)beam(g,V3(x,3,z),V3(x,3.9,z),.05,wd2,4)}return g}
-function ferry(o={}){const g=new T.Group(),hull=new T.Group();g.add(hull);const hm=mat(0x2c6a7a),wm=mat(0xf2eee6),rm=mat(0x2b2b30);
+function ferry(o={}){const g=new T.Group(),hull=new T.Group();g.add(hull);hull.userData.bakePivot=true;const hm=mat(0x2c6a7a),wm=mat(0xf2eee6),rm=mat(0x2b2b30);
  add(hull,ext([[-5,.3],[4.2,.3],[5.8,1.6],[-5.3,1.6]],3.8,.08),hm);add(hull,B(10.6,.12,3.9),mat(0xd8cfc0),.2,1.66,0);
  add(hull,cbox(5.6,1.4,3.1,.06),wm,-.6,2.42,0);for(const z of[-1,1])for(let i=0;i<6;i++)add(hull,B(.55,.5,.04),WIN(),-3+i*.95,2.55,z*1.57);
  add(hull,cbox(3.4,1.1,2.6,.05),wm,-.9,3.68,0);for(const z of[-1,1])for(let i=0;i<3;i++)add(hull,B(.6,.45,.04),WIN(),-2+i*1.1,3.75,z*1.32);
@@ -408,13 +409,13 @@ function ferry(o={}){const g=new T.Group(),hull=new T.Group();g.add(hull);const 
  const sm=Smoke(hull,-1.6,5.8,0,0x9a9a9a,.9);g.userData.update=(dt,t,env)=>{hull.position.y=Math.sin(t*.9)*.08;hull.rotation.z=Math.sin(t*.7)*.018;hull.rotation.x=Math.sin(t*.55)*.012;sm.update(dt,t,env)};return g}
 function outpost(o={}){seed(o.seed??15);const g=new T.Group();add(g,B(9,.04,8),mat(0x3d7fc4,{r:1}),0,.02,0,0,0,0,false);
  const pm=mat(0xd8d2c4),cv=mat(0xe8eadd,{ds:true});for(const[x,z,h]of[[-4,-3.5,3.2],[4,-3.5,3.2],[-4,3.5,2.4],[4,3.5,2.4]])beam(g,V3(x,0,z),V3(x,h,z),.07,pm,6);
- const cg=new T.PlaneGeometry(8.4,7.4);cg.rotateX(-Math.PI/2+.11);add(g,cg,cv,0,2.82,0);
+ const cg=new T.PlaneGeometry(8.4,7.4);cg.rotateX(-Math.PI/2+.11);const canopy=add(g,cg,cv,0,2.82,0);canopy.userData.skipBake=true;g.userData.workshopCanopy=canopy;
  add(g,cbox(2.4,.1,.9,.02),mat(0x8a6a4a),-2.5,1,-3);for(const x of[-3.5,-1.5])for(const z of[-3.35,-2.65])beam(g,V3(x,0,z),V3(x,1,z),.04,mat(0x333),4);add(g,cbox(.9,1,.6,.03),mat(0xc8322a,{r:.5,m:.2}),2.8,.5,-3.2);
  for(let i=0;i<4;i++)add(g,new T.TorusGeometry(.38,.15,6,14),mat(0x26262b),3.2,.15+i*.28,2.6,Math.PI/2,0,0);
  for(const[x,c]of[[-3.4,0x2f5a8a],[-2.8,0xc8322a],[-3.1,0x4a6a3a]])add(g,CY(.3,.3,.9,10),mat(c,{r:.6,m:.2}),x,.45,2.8+(x+3)*.3);
- const bunt=[];for(let i=0;i<14;i++){const t=i/13,x=-4+8*t,y=3.15-Math.sin(t*Math.PI)*.5,f=add(g,tri([-.16,0,0],[.16,0,0],[0,-.38,0]),mat([0xe8452c,0xf2c447,0x3d7fc4,0x4f9a52][i%4],{ds:true}),x,y,-3.5,0,0,0,false);bunt.push(f)}
+ const bunt=[];for(let i=0;i<14;i++){const t=i/13,x=-4+8*t,y=3.15-Math.sin(t*Math.PI)*.5,f=add(g,tri([-.16,0,0],[.16,0,0],[0,-.38,0]),mat([0xe8452c,0xf2c447,0x3d7fc4,0x4f9a52][i%4],{ds:true}),x,y,-3.5,0,0,0,false);f.userData.skipBake=true;f.userData.windFlag=true;bunt.push(f)}
  beam(g,V3(-4,3.15,-3.5),V3(4,3.15,-3.5),.01,mat(0x333),3);add(g,cbox(.3,.35,.3,.03),mat(0xfff0d0,{e:0xffc070,ei:1.6,lamp:true}),0,2.6,0);glow(g,0xffc27a,2.2,0,2.5,0,true,.9);
- g.userData.update=(dt,t,env)=>bunt.forEach((f,i)=>f.rotation.x=Math.sin(t*3+i)*.3*(.3+env.wind));return g}
+ const workLight=new T.PointLight(0xffc27a,1.8*Math.PI,18,0);workLight.position.set(0,2.5,0);g.add(workLight);g.userData.update=(dt,t,env)=>bunt.forEach((f,i)=>f.rotation.x=Math.sin(t*3+i)*.3*(.3+env.wind));return g}
 
 /* ============================================================================
    CAMP & PROPS
@@ -461,10 +462,10 @@ function birdMesh(col){const b=new T.Group(),bm=mat(col),wm=mat(col,{ds:true});a
 function flock(o={}){seed(o.seed??19);const g=new T.Group(),n=o.n||14,birds=[];for(let i=0;i<n;i++){const b=birdMesh(o.dark?0x2b2b33:0xf2f0ea);b.userData.ph=rnd()*TAU;b.userData.r=rr(4,9);b.userData.h=rr(4,7);b.userData.s=rr(.35,.55);g.add(b);birds.push(b)}
  g.userData.update=(dt,t)=>{for(const b of birds){const u=b.userData,a=t*u.s+u.ph,x=Math.cos(a)*u.r,z=Math.sin(a)*u.r,y=u.h+Math.sin(t*.7+u.ph)*.6;b.position.set(x,y,z);b.rotation.set(0,-a-Math.PI/2+Math.PI,Math.sin(t+u.ph)*.2);
   const flap=Math.max(0,Math.sin(t*.6+u.ph*3))>.4?Math.sin(t*14+u.ph)*.9:.05;b.userData.w[0].rotation.x=-flap;b.userData.w[1].rotation.x=flap}};return g}
-function deer(o={}){const g=new T.Group(),c=mat(0xa8693e),cl=mat(0xe8d6b8),dk=mat(0x2b2220),body=new T.Group();g.add(body);
+function deer(o={}){const g=new T.Group(),c=mat(0xa8693e),cl=mat(0xe8d6b8),dk=mat(0x2b2220),body=new T.Group();g.add(body);body.userData.bakePivot=true;
  add(body,IC(.5,1),c,0,1.15,0).scale.set(1.5,.75,.6);add(body,IC(.3,0),cl,-.6,1.2,0).scale.set(.4,.6,.6);
  for(const[x,z]of[[.5,.18],[.5,-.18],[-.5,.18],[-.5,-.18]]){beam(body,V3(x,1,z),V3(x,.45,z),.05,c,5);beam(body,V3(x,.45,z),V3(x+.03,0,z),.035,c,5);add(body,B(.07,.06,.07),dk,x+.03,.03,z)}
- const neck=new T.Group();neck.position.set(.6,1.3,0);body.add(neck);beam(neck,V3(0,0,0),V3(.25,.55,0),.12,c,6);const head=new T.Group();head.position.set(.27,.6,0);neck.add(head);
+ const neck=new T.Group();neck.position.set(.6,1.3,0);body.add(neck);neck.userData.bakePivot=true;beam(neck,V3(0,0,0),V3(.25,.55,0),.12,c,6);const head=new T.Group();head.position.set(.27,.6,0);neck.add(head);head.userData.bakePivot=true;
  add(head,IC(.15,0),c,.08,0,0).scale.set(1.5,.9,.85);add(head,IC(.06,0),dk,.3,-.04,0);for(const z of[-1,1]){add(head,tri([0,0,0],[-.06,.22,z*.12],[.06,.18,z*.08]),mat(0x8a5432,{ds:true}),-.02,.05,z*.06);add(head,IC(.025,0),dk,.16,.04,z*.09)}
  if(o.buck!==false)for(const z of[-1,1]){const a=V3(0,.12,z*.05),b=V3(-.1,.5,z*.22);beam(head,a,b,.02,mat(0xd8c8a8),4);beam(head,V3(-.05,.3,z*.13),V3(.12,.45,z*.2),.015,mat(0xd8c8a8),4);beam(head,b,V3(.05,.62,z*.3),.015,mat(0xd8c8a8),4)}
  g.userData.update=(dt,t)=>{const k=Math.sin(t*.35),graze=T.MathUtils.smoothstep(k,.2,.6);neck.rotation.z=-graze*1.5;head.rotation.z=graze*.4+Math.sin(t*2.3)*.03*(1-graze);body.position.y=Math.sin(t*1.7)*.01};return g}
@@ -503,7 +504,7 @@ function snowDemo(){const g=new T.Group(),s=Snow(900,12);g.add(s);const c=V3(0,4
 function auroraDemo(){const g=new T.Group(),a=Aurora();a.scale.setScalar(.12);a.position.set(0,6,-4);g.add(a);g.userData.update=(dt,t,env)=>a.userData.update(dt,t,{aurora:1});return g}
 
 /* ============================================================================
-   REGISTRY â€” every model in the kit. opts drive the inspector controls.
+   REGISTRY — every model in the kit. opts drive the inspector controls.
 ============================================================================ */
 const SEASON={k:'season',l:'Season',t:'seg',v:['summer','autumn','winter']},SEED={k:'seed',l:'Variation',t:'seed'};
 const ENTRIES=[
@@ -526,9 +527,9 @@ const ENTRIES=[
  {id:'aframe',cat:'Buildings',name:'A-frame cabin',blurb:'Glass gable that glows after dusk.',build:aframe,opts:[]},
  {id:'logcabin',cat:'Buildings',name:'Log cabin',blurb:'Stacked logs, porch, chimney smoke.',build:logCabin,opts:[]},
  {id:'tower',cat:'Buildings',name:'Fire lookout',blurb:'Braced watchtower with a lit cab.',build:tower,opts:[]},
- {id:'lighthouse',cat:'Buildings',name:'Lighthouse',blurb:'Sweeping beam at night, keeperâ€™s cottage.',build:lighthouse,opts:[]},
+ {id:'lighthouse',cat:'Buildings',name:'Lighthouse',blurb:'Sweeping beam at night, keeper’s cottage.',build:lighthouse,opts:[]},
  {id:'pier',cat:'Buildings',name:'Pier',blurb:'Plank jetty with lamp posts.',build:pier,opts:[]},
- {id:'bridge',cat:'Buildings',name:'Trestle bridge',blurb:'Timber bridge sized for the 6Ã—6.',build:bridge,opts:[]},
+ {id:'bridge',cat:'Buildings',name:'Trestle bridge',blurb:'Timber bridge sized for the 6×6.',build:bridge,opts:[]},
  {id:'ferry',cat:'Buildings',name:'Lake ferry',blurb:'Bobbing car ferry with nav lights.',build:ferry,opts:[]},
  {id:'outpost',cat:'Buildings',name:'Outpost garage',blurb:'Tarp workshop where you swap parts.',build:outpost,opts:[]},
  {id:'firepit',cat:'Camp & props',name:'Fire pit',blurb:'Flames, embers, smoke and real light.',build:firepit,opts:[]},
@@ -550,17 +551,22 @@ const ENTRIES=[
  {id:'fx_aurora',cat:'Weather',name:'Aurora',blurb:'Night-sky curtain.',build:auroraDemo,opts:[]},
  {id:'fx_cloud',cat:'Weather',name:'Cloud',blurb:'Low-poly cumulus.',build:cloud,opts:[SEED]}
 ];
+function ridge(o={}){seed(o.seed??31);const g=new T.Group(),m=new T.MeshBasicMaterial({color:0x888888,fog:false});g.userData.tint=m;const radius=o.radius??1250,ring=o.ring??0;for(let i=0;i<14;i++){const a=i/14*TAU+ring*.6+rr(0,.16),h=rr(180,320)+ring*65,r=rr(160,280),geo=new T.ConeGeometry(r,h,8,4),p=geo.attributes.position;for(let k=0;k<p.count;k++){const x=p.getX(k),y=p.getY(k),z=p.getZ(k),n=1+(noise3(x*.02+i*7,y*.02,z*.02)-.5)*.7;p.setXYZ(k,x*n,y,z*n);}add(g,geo,m,Math.cos(a)*radius,h/2-25,Math.sin(a)*radius,0,0,0,false);}return g;}
+function rangerGate(o={}){const g=new T.Group(),arm=new T.Group();arm.userData.bakePivot=true;g.add(arm);arm.position.set(-3,1.2,0);add(arm,B(6,.16,.18),mat(0xf1e6ce),3,0,0);for(let i=0;i<6;i++)add(arm,B(.4,.17,.19),mat(0xe2672e),.5+i,0,0,0,0,.35);for(const x of [-3,3])add(g,B(.28,1.4,.3),mat(0x6a5038),x,.7,0);const hut=aframe();hut.scale.setScalar(.4);hut.position.set(-6,0,-2);g.add(hut);const sign=props({kind:'sign'});sign.position.set(4,0,0);g.add(sign);const lamp=lantern();lamp.position.set(-3,1.5,0);g.add(lamp);let target=0;g.userData.setOpen=v=>target=v?Math.PI*.47:0;g.userData.update=(dt,t,env)=>{arm.rotation.z+=(target-arm.rotation.z)*(1-Math.exp(-dt*4));g.userData.open=arm.rotation.z>1.2;};return g}
+function waterfall(o={}){const g=new T.Group(),rocks=rock({kind:'cluster',seed:72});rocks.scale.set(3,4,2);g.add(rocks);const m=new T.MeshBasicMaterial({color:0xa4dbea,transparent:true,opacity:.65,side:T.DoubleSide}),fall=add(g,new T.PlaneGeometry(4,12,4,8),m,0,5.5,1.8);const dots=new T.BufferGeometry(),p=new Float32Array(90*3);for(let i=0;i<90;i++){p[i*3]=rr(-2,2);p[i*3+1]=rr(0,12);p[i*3+2]=rr(1.5,2.5)}dots.setAttribute('position',new T.BufferAttribute(p,3));const spray=new T.Points(dots,new T.PointsMaterial({color:0xf4fcff,size:.12,transparent:true,opacity:.7}));g.add(spray);g.userData.update=(dt,t,env)=>{for(let i=0;i<90;i++){p[i*3+1]-=dt*(4+i%3);if(p[i*3+1]<0)p[i*3+1]=12}dots.attributes.position.needsUpdate=true;fall.material.opacity=.55+Math.sin(t*2)*.08;};return g}
+function owl(o={}){const g=new T.Group(),m=mat(0x9a8061),cream=mat(0xd8ceb7);add(g,IC(.32,1),m,0,.35,0).scale.y=1.4;add(g,IC(.24,1),cream,0,.8,.02);for(const x of [-.1,.1]){add(g,IC(.06,1),mat(0xe9b842),x,.83,.21);add(g,IC(.03,1),mat(0x201928),x,.83,.26)}add(g,CY(0,.06,.12,4),mat(0xcda446),0,.72,.25,Math.PI/2,0,0);g.userData.update=(dt,t,env)=>{g.rotation.y=Math.sin(t*.15)*.3;};return g}
 const VOPTS=[
  {sec:'Paint & livery',items:[{k:'paint',l:'Paint',t:'swatch'},{k:'roof',l:'Roof',t:'seg',v:['white','body','black']},{k:'livery',l:'Livery',t:'seg',v:['none','stripe','rally','safari','twotone']},{k:'num',l:'Number',t:'range',min:1,max:99,step:1},{k:'wear',l:'Mud & rust',t:'range',min:0,max:1,step:.05}]},
  {sec:'Wheels & stance',items:[{k:'tires',l:'Tyres',t:'seg',v:['road','allterrain','mud','sand','chains']},{k:'rims',l:'Rims',t:'seg',v:['steel','spoke','beadlock','white','black']},{k:'tireSize',l:'Tyre size',t:'range',min:.9,max:1.3,step:.05},{k:'lift',l:'Lift',t:'range',min:0,max:.35,step:.01},{k:'susp',l:'Suspension',t:'seg',v:['soft','stock','stiff']}]},
  {sec:'Body kit',items:[{k:'front',l:'Front',t:'seg',v:['bumper','bullbar','ram']},{k:'snorkel',l:'Snorkel',t:'toggle'},{k:'spare',l:'Spare wheel',t:'toggle'},{k:'ladder',l:'Ladder',t:'toggle'},{k:'flaps',l:'Mud flaps',t:'toggle'},{k:'cans',l:'Jerry cans',t:'toggle'},{k:'armor',l:'Scrap armour',t:'toggle'}]},
  {sec:'Roof',items:[{k:'rack',l:'Roof rack',t:'toggle'},{k:'load',l:'Load',t:'seg',v:['none','cargo','kayak','tent']},{k:'antenna',l:'Whip antenna',t:'toggle'},{k:'flag',l:'Flag pole',t:'seg',v:['none','flag','whip']}]},
  {sec:'Lights',items:[{k:'lights',l:'Headlights',t:'seg',v:['auto','on','off']},{k:'roofLamps',l:'Roof lamps',t:'toggle'},{k:'lightbar',l:'Light bar',t:'toggle'},{k:'fog',l:'Fog lamps',t:'toggle'}]},
+ {sec:'Suspension tuning',items:[{k:'spring',l:'Spring stiffness',t:'range',min:.7,max:1.5,step:.05,d:1},{k:'damping',l:'Damping',t:'range',min:.7,max:2,step:.05,d:1},{k:'preload',l:'Preload',t:'range',min:.7,max:1.4,step:.05,d:1}]},
  {sec:'Drivetrain',items:[{k:'engine',l:'Engine',t:'seg',v:['inline6','v8','diesel','electric']}]}];
 const CATS=['Vehicles','Nature','Buildings','Camp & props','Wildlife','Weather'];
 
 return{T,TAU,V3,mat,glow,add,B,CY,IC,ext,cbox,beam,rockGeo,noise3,seed,rnd,rr,Cloth,Whip,lamps,glowSprites,shared,bladeGeo,
- vehicle,caravan,VEH,PAINTS,ENGINES,SUSP,VDEF,VOPTS,ENTRIES,CATS,pine,broadleaf,snag,palm,cactus,bush,rock,reeds,flowers,stump,
+ vehicle,caravan,VEH,PAINTS,ENGINES,SUSP,VDEF,VOPTS,ENTRIES,CATS,pine,broadleaf,snag,palm,cactus,bush,rock,reeds,flowers,stump,ridge,rangerGate,waterfall,owl,
  aframe,logCabin,tower,lighthouse,pier,bridge,ferry,outpost,firepit,tent,chair,lantern,fairyLights,props,beacon,flock,deer,butterflies,
  Rain,Snow,Lightning,Fireflies,Aurora,cloud,fogBank,Smoke}})();
 export const KIT = RAW_KIT as unknown as KitApi;

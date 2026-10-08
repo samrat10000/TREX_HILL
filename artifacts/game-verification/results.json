@@ -1,0 +1,13 @@
+{
+  "checks": [
+    "Night preview drives automatic headlights",
+    "Field of view and accessibility apply live",
+    "Settings persist their complete values",
+    "Garage shows six live stat bars",
+    "Garage explains locked snow chains",
+    "Paper map sets a real world waypoint",
+    "Framing a deer awards its postcard",
+    "JPEG encodes the rendered canvas"
+  ],
+  "errors": []
+}

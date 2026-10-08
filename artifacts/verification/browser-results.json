@@ -1,0 +1,19 @@
+{
+  "result": {
+    "pose": {
+      "x": 34,
+      "z": -25.963269830379996,
+      "y": 0.07997558976519376,
+      "speed": 9.605213445584964,
+      "pitch": 0.007912587448354984,
+      "roll": -0.015618719198342037
+    },
+    "canvas": {
+      "width": 292,
+      "height": 633
+    },
+    "text": "✳\nOVER THE HILL\nDrive\nGarage\nKit viewer\n⚙\n?\nDAYLIGHT\nDawn\nMorning\nNoon\nGolden\nDusk\nNight\nWEATHER\nClear\nRain\nStorm\nMist\nSnow\nREGION\nMeadow\nHighland\nAutumn\nDesert\nSnowline\nCoast\nSUSPENSION\n35\nKM/H\nSound off\nRecover\nCamera\nPause\n◀\n▲\n▼\n▶\nBrake\nVALLEY TRAILS\n↗\nN ↑\nFree roam · choose your own road\n0.03 km travelled\n5 fps · 128 calls · 189,200 tris",
+    "fallback": false
+  },
+  "errors": []
+}

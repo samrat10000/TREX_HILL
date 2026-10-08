@@ -1,0 +1,32 @@
+{
+  "checks": [
+    "Physics deferred on starting screen",
+    "Swept chassis query hits a rendered tree",
+    "Pause holds vehicle pose",
+    "Blur releases throttle",
+    "130% UI fills viewport",
+    "Scaled settings fit vertically",
+    "medium preset changes grass capacity",
+    "medium render resolution applied",
+    "high preset changes grass capacity",
+    "high render resolution applied",
+    "ultra preset changes grass capacity",
+    "ultra render resolution applied",
+    "low preset changes grass capacity",
+    "low render resolution applied",
+    "Rendered meadow",
+    "Rendered highland",
+    "Rendered autumn",
+    "Rendered desert",
+    "Rendered alpine",
+    "Rendered coast",
+    "Garage preload applies",
+    "Category filtering",
+    "Rain demo visible in clear weather",
+    "Preview did not replace garage vehicle",
+    "Audio enabled from gesture",
+    "Audio muted through master gain",
+    "Reload starts at menu with saved preferences"
+  ],
+  "errors": []
+}

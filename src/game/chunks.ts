@@ -1,0 +1,3 @@
+export const CHUNK_SIZE=128;
+export const chunkKey=(x:number,z:number)=>`${x},${z}`;
+export function chunkPlan(x:number,z:number,current:Iterable<string>){const cx=Math.floor((x+1024)/128),cz=Math.floor((z+1024)/128),keep=new Set(current),wanted:string[]=[];for(let dx=-3;dx<=3;dx++)for(let dz=-3;dz<=3;dz++){const tx=cx+dx,tz=cz+dz;if(tx>=0&&tx<16&&tz>=0&&tz<16)wanted.push(chunkKey(tx,tz));}wanted.sort((a,b)=>{const [ax,az]=a.split(',').map(Number),[bx,bz]=b.split(',').map(Number);return Math.hypot(ax-cx,az-cz)-Math.hypot(bx-cx,bz-cz)});const remove=[...keep].filter(k=>{const [tx,tz]=k.split(',').map(Number);return Math.max(Math.abs(tx-cx),Math.abs(tz-cz))>4});return{wanted,add:wanted.filter(k=>!keep.has(k)),remove};}
